@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 from dotenv import load_dotenv
+import streamlit as st
+
 
 # 상수
 KST = timezone(timedelta(hours=9))
@@ -423,24 +425,31 @@ class KiwoomAPI(BaseAPI):
     
 # ==================== 메인 실행 ====================
 def load_account_config(prefix: str, broker: str) -> Optional[Dict]:
-    """환경변수에서 계정 정보 로드"""
+    """환경변수 또는 Streamlit Secrets에서 계정 정보 로드 (수정된 버전)"""
     key_suffix = "HANTOO" if broker == "kis" else "KIWOOM"
-    app_key = os.getenv(f"{prefix}_{key_suffix}_APP_KEY")
-    app_secret = os.getenv(f"{prefix}_{key_suffix}_APP_SECRET")
-    account_no = os.getenv(f"{prefix}_{key_suffix}_ACCOUNT_NO")
     
-    if not all([app_key, app_secret, account_no]):
-        return None
+    app_key_name = f"{prefix}_{key_suffix}_APP_KEY"
+    app_secret_name = f"{prefix}_{key_suffix}_APP_SECRET"
+    account_no_name = f"{prefix}_{key_suffix}_ACCOUNT_NO"
     
-    return {
-        "app_key": app_key,
-        "app_secret": app_secret,
-        "account_no": account_no,
-        "prefix": prefix,
-        "broker": broker
-    }
+    # Streamlit Cloud 환경인지 확인하여 Secrets 우선 사용
+    if hasattr(st, 'secrets') and all(k in st.secrets for k in [app_key_name, app_secret_name, account_no_name]):
+        print(f"[{prefix}] Streamlit Secrets에서 설정 로드 중...")
+        app_key = st.secrets[app_key_name]
+        app_secret = st.secrets[app_secret_name]
+        account_no = st.secrets[account_no_name]
+    else:
+        # 로컬 환경에서는 기존 방식(.env)으로 값을 가져옴
+        print(f"[{prefix}] 로컬 .env 파일에서 설정 로드 중...")
+        app_key = os.getenv(app_key_name)
+        app_secret = os.getenv(app_secret_name)
+        account_no = os.getenv(account_no_name)
 
-
+    if all([app_key, app_secret, account_no]):
+        return {"app_key": app_key, "app_secret": app_secret, "account_no": account_no, "prefix": prefix, "broker": broker}
+    
+    print(f"[{prefix}] {broker} 계정 설정을 찾을 수 없습니다.")
+    return None
 # stock.py 파일의 맨 아래 main 함수와 그 주변 부분을 아래 코드로 교체하세요.
 
 # ... (파일 상단의 KISApi, KiwoomAPI 클래스 등은 그대로 둡니다) ...
