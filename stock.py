@@ -425,27 +425,46 @@ def load_account_config(prefix: str, broker: str) -> Optional[Dict]:
 # ... (파일 상단의 KISApi, KiwoomAPI 클래스 등은 그대로 둡니다) ...
 
 def collect_all_assets():
+    """
+    모든 증권사 API를 호출하여 통합된 자산 목록을 반환하는 함수.
+    """
     all_assets = []
     
-    # 한국투자증권
+    # 한국투자증권 (개인, 법인)
     for prefix in ["P", "C"]:
         config = load_account_config(prefix, "kis")
-        if not config: continue
+        if not config:
+            continue
         
-        # --- 수정: token_file 인자 제거 ---
-        api = KISApi(config["app_key"], config["app_secret"], config["account_no"], prefix)
+        # --- 수정: token_file 인자 제거 및 account_prefix 이름 변경 ---
+        api = KISApi(
+            config["app_key"], 
+            config["app_secret"], 
+            config["account_no"], 
+            prefix # account_type을 prefix로 전달
+        )
+        # ----------------------------------------------------
         
-        print(f"[{api.base_asset_info['account_label']}] 데이터 수집 중...")
+        # --- 수정: api.base_asset_info 대신 직접 라벨 생성 및 api.account_type 사용 ---
+        label = f"한국투자증권({'개인' if api.account_type == 'P' else '법인'})"
+        print(f"[{label}] 데이터 수집 중...")
+        # ----------------------------------------------------------------
+
         all_assets.extend(api.get_domestic_balance())
         all_assets.extend(api.get_overseas_balance())
     
-    # 키움증권
+    # 키움증권 (법인)
     kiw_config = load_account_config("C", "kiwoom")
     if kiw_config:
-        # --- 수정: token_file 인자 제거 ---
-        api = KiwoomAPI(kiw_config["app_key"], kiw_config["app_secret"], kiw_config["account_no"])
+        api = KiwoomAPI(
+            kiw_config["app_key"], 
+            kiw_config["app_secret"],
+            kiw_config["account_no"]
+        )
 
-        print(f"[{api.base_asset_info['account_label']}] 데이터 수집 중...")
+        # --- 수정: api.base_asset_info 대신 직접 라벨 생성 ---
+        print(f"[키움증권(법인)] 데이터 수집 중...")
+        # -----------------------------------------------
         try:
             all_assets.extend(api.get_domestic_balance())
         except Exception as e:
