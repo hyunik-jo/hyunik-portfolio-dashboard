@@ -456,19 +456,19 @@ def collect_all_assets():
         if not config:
             continue
         
-        # --- 수정: token_file 인자 제거 및 account_prefix 이름 변경 ---
+        # --- 수정: account_prefix 이름 변경 ---
         api = KISApi(
             config["app_key"], 
             config["app_secret"], 
             config["account_no"], 
             prefix # account_type을 prefix로 전달
         )
-        # ----------------------------------------------------
+        # -----------------------------------
         
-        # --- 수정: api.base_asset_info 대신 직접 라벨 생성 ---
-        label = f"한국투자증권({'개인' if prefix == 'P' else '법인'})"
+        # --- 수정: api.base_asset_info 대신 직접 라벨 생성 및 api.account_type 사용 ---
+        label = f"한국투자증권({'개인' if api.account_type == 'P' else '법인'})"
         print(f"[{label}] 데이터 수집 중...")
-        # -----------------------------------------------
+        # ----------------------------------------------------------------
 
         all_assets.extend(api.get_domestic_balance())
         all_assets.extend(api.get_overseas_balance())
@@ -476,13 +476,11 @@ def collect_all_assets():
     # 키움증권 (법인)
     kiw_config = load_account_config("C", "kiwoom")
     if kiw_config:
-        # --- 수정: token_file 인자 제거 ---
         api = KiwoomAPI(
             kiw_config["app_key"], 
             kiw_config["app_secret"],
             kiw_config["account_no"]
         )
-        # -----------------------------
 
         # --- 수정: api.base_asset_info 대신 직접 라벨 생성 ---
         print(f"[키움증권(법인)] 데이터 수집 중...")
