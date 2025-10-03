@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 # 상수
 KST = timezone(timedelta(hours=9))
 TOKEN_BUFFER_SEC = 300  # 5분
-DIR_PATH = Path(r"C:\Users\조현익\Documents\stock_api")
+# 스크립트 파일의 현재 위치를 기준으로 경로를 동적으로 설정
+DIR_PATH = Path(__file__).resolve().parent
 ENV_PATH = DIR_PATH / ".env"
 
 load_dotenv(dotenv_path=ENV_PATH)
