@@ -50,24 +50,25 @@ def safe_int(val, default=0) -> int:
 
 
 # ==================== Base API 클래스 ====================
+# stock.py 파일의 BaseAPI 클래스 전체를 아래 코드로 덮어쓰세요.
+
 class BaseAPI:
     """토큰 관리 및 API 호출 기본 클래스 (세션 상태 사용)"""
     
     def __init__(self, app_key: str, app_secret: str, account_prefix: str):
         self.app_key = app_key
         self.app_secret = app_secret
-        # 세션 상태에서 사용할 고유한 키 생성 (예: 'token_P_kis')
         self.token_key = f"token_{account_prefix}_{self.__class__.__name__}"
+        # --- 수정 1: self._token 변수를 여기서 초기화합니다. ---
+        self._token: Optional[str] = None
 
     def get_token(self) -> str:
         """토큰 반환 (세션 상태 확인 후 없으면 신규 발급)"""
-        # 세션 상태에서 토큰 정보 확인
         token_info = st.session_state.get(self.token_key, {})
         if token_info and token_info.get("expires_at", 0) > now_kst().timestamp():
             print(f"[{self.token_key}] 세션 상태 토큰 재사용.")
             return token_info["token"]
         
-        # 없으면 신규 발급
         print(f"[{self.token_key}] 새 토큰 발급 중...")
         return self._issue_token()
 
@@ -78,13 +79,15 @@ class BaseAPI:
         raise NotImplementedError
 
     def _save_token(self, data: dict, expires_at: float):
-        """토큰을 파일 대신 세션 상태에 저장"""
+        """토큰을 세션 상태와 현재 객체에 모두 저장"""
         token = self._extract_token(data)
         if token:
             st.session_state[self.token_key] = {
                 "token": token,
                 "expires_at": expires_at
             }
+            # --- 수정 2: 현재 객체의 self._token 변수에도 값을 할당합니다. ---
+            self._token = token
             print(f"[{self.token_key}] 토큰을 세션 상태에 저장 완료.")
 
 # ==================== 한국투자증권(KIS) ====================
