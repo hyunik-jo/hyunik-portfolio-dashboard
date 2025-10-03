@@ -51,64 +51,53 @@ def safe_int(val, default=0) -> int:
 
 # ==================== Base API 클래스 ====================
 class BaseAPI:
-    """토큰 관리 및 API 호출 기본 클래스"""
+    """토큰 관리 및 API 호출 기본 클래스 (세션 상태 사용)"""
     
-    def __init__(self, app_key: str, app_secret: str, token_file: Path):
+    def __init__(self, app_key: str, app_secret: str, account_prefix: str):
         self.app_key = app_key
         self.app_secret = app_secret
-        self.token_file = token_file
-        self._token: Optional[str] = None
+        # 세션 상태에서 사용할 고유한 키 생성 (예: 'token_P_kis')
+        self.token_key = f"token_{account_prefix}_{self.__class__.__name__}"
 
     def get_token(self) -> str:
-        """토큰 반환 (캐시 → 파일 → 신규 발급 순)"""
-        if self._token:
-            return self._token
+        """토큰 반환 (세션 상태 확인 후 없으면 신규 발급)"""
+        # 세션 상태에서 토큰 정보 확인
+        token_info = st.session_state.get(self.token_key, {})
+        if token_info and token_info.get("expires_at", 0) > now_kst().timestamp():
+            print(f"[{self.token_key}] 세션 상태 토큰 재사용.")
+            return token_info["token"]
         
-        # 파일에서 로드
-        if self.token_file.exists():
-            try:
-                with open(self.token_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                expires_at = data.get("expires_at", 0)
-                if expires_at > now_kst().timestamp():
-                    self._token = self._extract_token(data)
-                    if self._token:
-                        print(f"[토큰] 재사용 ({self.token_file.name})")
-                        return self._token
-            except (json.JSONDecodeError, KeyError):
-                pass
-        
-        # 신규 발급
-        print(f"[토큰] 새 발급 중... ({self.token_file.name})")
+        # 없으면 신규 발급
+        print(f"[{self.token_key}] 새 토큰 발급 중...")
         return self._issue_token()
 
     def _extract_token(self, data: dict) -> Optional[str]:
-        """응답에서 토큰 추출 (하위 클래스에서 오버라이드 가능)"""
         return data.get("access_token") or data.get("token")
 
     def _issue_token(self) -> str:
-        """토큰 발급 (하위 클래스에서 구현)"""
         raise NotImplementedError
 
     def _save_token(self, data: dict, expires_at: float):
-        """토큰 파일 저장"""
-        data["expires_at"] = expires_at
-        with open(self.token_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        self._token = self._extract_token(data)
-        print(f"[토큰] 저장 완료 → {self.token_file}")
-
+        """토큰을 파일 대신 세션 상태에 저장"""
+        token = self._extract_token(data)
+        if token:
+            st.session_state[self.token_key] = {
+                "token": token,
+                "expires_at": expires_at
+            }
+            print(f"[{self.token_key}] 토큰을 세션 상태에 저장 완료.")
 
 # ==================== 한국투자증권(KIS) ====================
 class KISApi(BaseAPI):
     BASE_URL = "https://openapi.koreainvestment.com:9443"
     
-    def __init__(self, app_key: str, app_secret: str, account_no: str, 
-                 token_file: Path, account_type: str):
-        super().__init__(app_key, app_secret, token_file)
+    def __init__(self, app_key: str, app_secret: str, account_no: str, account_type: str):
+        # account_prefix를 생성하여 BaseAPI에 전달
+        super().__init__(app_key, app_secret, f"KIS_{account_type}")
         self.account_no = account_no
-        self.account_type = account_type  # 'P' or 'C'
-
+        self.account_type = account_type
+        # ... (이하 KISApi의 나머지 코드는 기존과 동일)
+        
     def _issue_token(self) -> str:
         url = f"{self.BASE_URL}/oauth2/tokenP"
         headers = {"content-type": "application/json"}
@@ -306,8 +295,9 @@ class KISApi(BaseAPI):
 class KiwoomAPI(BaseAPI):
     BASE_URL = "https://api.kiwoom.com"
     
-    def __init__(self, app_key: str, app_secret: str, account_no: str, token_file: Path):
-        super().__init__(app_key, app_secret, token_file)
+    def __init__(self, app_key: str, app_secret: str, account_no: str):
+        # account_prefix를 생성하여 BaseAPI에 전달
+        super().__init__(app_key, app_secret, "KIWOOM_C")
         self.account_no = account_no
 
     def _extract_token(self, data: dict) -> Optional[str]:
@@ -467,12 +457,10 @@ def collect_all_assets():
         if not config:
             continue
         
-        token_file = DIR_PATH / f"hantoo_token_{prefix}.json"
         api = KISApi(
             config["app_key"], 
             config["app_secret"], 
             config["account_no"], 
-            token_file,
             prefix
         )
         
@@ -483,12 +471,11 @@ def collect_all_assets():
     # 키움증권 (법인)
     kiw_config = load_account_config("C", "kiwoom")
     if kiw_config:
-        token_file = DIR_PATH / "kiwoom_token_C.json"
         api = KiwoomAPI(
             kiw_config["app_key"], 
             kiw_config["app_secret"],
-            kiw_config["account_no"], 
-            token_file
+            kiw_config["account_no"]
+
         )
         
         print(f"[{api.base_asset_info['account_label']}] 데이터 수집 중...")
