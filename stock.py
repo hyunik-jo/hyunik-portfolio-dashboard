@@ -276,10 +276,15 @@ class KiwoomAPI(BaseAPI):
     BASE_URL = "https://api.kiwoom.com"
     
     def __init__(self, app_key: str, app_secret: str, account_no: str):
-        # account_prefix를 생성하여 BaseAPI에 전달
+        # --- 수정: account_prefix를 생성하여 BaseAPI에 전달하고 base_asset_info를 정의합니다. ---
         super().__init__(app_key, app_secret, "KIWOOM_C")
         self.account_no = account_no
-
+        self.base_asset_info = {
+            "broker": "키움증권",
+            "account_type": "법인",
+            "account_label": "뮤사이(키움)"
+        }
+    
     def _extract_token(self, data: dict) -> Optional[str]:
         """키움은 'token' 필드 사용"""
         return data.get("token") or data.get("access_token")
@@ -297,8 +302,7 @@ class KiwoomAPI(BaseAPI):
         res.raise_for_status()
         data = res.json()
         
-        # expires_dt (YYYYMMDDHHMMSS) 파싱
-        expires_at = now_kst().timestamp() + 1800  # 기본 30분
+        expires_at = now_kst().timestamp() + 1800
         if "expires_dt" in data:
             try:
                 dt = datetime.strptime(data["expires_dt"], "%Y%m%d%H%M%S").replace(tzinfo=KST)
@@ -306,8 +310,7 @@ class KiwoomAPI(BaseAPI):
             except ValueError:
                 pass
         
-        expires_at -= TOKEN_BUFFER_SEC
-        self._save_token(data, expires_at)
+        self._save_token(data, expires_at - TOKEN_BUFFER_SEC)
         return self._token
 
     def get_domestic_balance(self, qry_dt: str = None) -> List[dict]:
