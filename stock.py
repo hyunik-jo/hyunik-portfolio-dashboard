@@ -256,6 +256,12 @@ def main():
         json.dump(output_data, f, ensure_ascii=False, indent=2)
     
     print(f"\n총 {len(assets)}건 수집 완료 → {output_file}")
-
+    
 if __name__ == "__main__":
-    main()
+    print("=" * 60 + "\n로컬 데이터 수집 시작\n" + "=" * 60)
+    assets = collect_all_assets()
+    output_data = {"last_updated_readable": now_kst().strftime('%Y-%m-%d %H:%M:%S'), "assets": assets}
+    output_file = DIR_PATH / "portfolio_unified.json"
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(output_data, f, ensure_ascii=False, indent=2)
+    print(f"\n총 {len(assets)}건 수집 완료 → {output_file}")
