@@ -3,8 +3,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from stock import collect_all_assets # stock.py에서 함수를 가져옵니다.
+KST = timezone(timedelta(hours=9))
 
 try:
     from currency_api import get_exchange_rates
