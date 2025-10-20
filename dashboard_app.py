@@ -95,6 +95,10 @@ st.markdown("""
     .negative-text { color: #FF4B4B; }
     @media (max-width: 768px) {
         .main-metric { font-size: 1.8rem; }
+        /* --- 모바일에서 새로고침 버튼 크기 조정 --- */ /* <--- 수정된 부분 */
+        div[data-testid="stHorizontalBlock"] > div:last-child button {
+            max-width: 150px;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -143,11 +147,11 @@ def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
     return df, exchange_rates_to_krw, last_update_time, last_updated
 
 # 새로고침 버튼
-col_title, col_refresh = st.columns([4, 1])
+col_title, col_refresh = st.columns([6, 1])
 with col_title:
     st.title("💼 통합 포트폴리오 대시보드")
 with col_refresh:
-    if st.button("🔄 새로고침", use_container_width=True):
+    if st.button("🔄 새로고침"):
         st.cache_data.clear()
         st.rerun()
 
@@ -195,7 +199,7 @@ if not df.empty:
 
     # 포트폴리오 구성
     st.subheader("🎯 포트폴리오 구성")
-    col_chart1, col_chart2 = st.columns(2)
+    col_chart1, col_chart2, col_chart3 = st.columns(3)
 
     with col_chart1:
         if not filtered_df.empty:
@@ -272,6 +276,51 @@ if not df.empty:
                     xanchor="center",
                     x=0.5,
                     font=dict(size=12)
+                ),
+                margin=dict(l=20, r=20, t=60, b=100)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    # --- with col_chart3: 블록 전체를 아래 코드로 교체하세요 ---
+
+    with col_chart3:
+        asset_df = filtered_df[filtered_df['asset_type'].isin(['stock', 'cash'])]
+        if not asset_df.empty:
+            # 1. 국가 정보를 담는 'country' 열 생성
+            def get_country(row):
+                if row['market'] == 'domestic':
+                    return '🇰🇷 대한민국'
+                elif row['currency'] == 'USD':
+                    return '🇺🇸 미국'
+                elif row['currency'] == 'HKD':
+                    return '🇭🇰 홍콩'
+                else:
+                    return '기타'
+            asset_df['country'] = asset_df.apply(get_country, axis=1)
+
+            country_summary = asset_df.groupby('country')['eval_amount_krw'].sum().reset_index()
+            
+            # 2. 국가별 색상 지정
+            country_colors = {
+                '🇰🇷 대한민국': '#003478',
+                '🇺🇸 미국': '#B22234',
+                '🇭🇰 홍콩': '#DE2910'
+            }
+
+            fig = px.pie(country_summary, names='country', values='eval_amount_krw',
+                        title='국가별 비중', hole=0.35,
+                        color='country',
+                        color_discrete_map=country_colors)
+            fig.update_traces(
+                textposition='inside',
+                texttemplate='<b>%{label}</b><br>%{percent}',
+                textfont=dict(size=14, family='Arial')
+            )
+            fig.update_layout(
+                height=600,
+                showlegend=True,
+                legend=dict(
+                    orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5, font=dict(size=12)
                 ),
                 margin=dict(l=20, r=20, t=60, b=100)
             )
