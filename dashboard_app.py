@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta, timezone
 from stock import collect_all_assets
+import boto3
 
 KST = timezone(timedelta(hours=9))
 
@@ -11,6 +12,77 @@ try:
     from currency_api import get_exchange_rates
 except ImportError:
     st.error("`currency_api.py` 파일을 찾을 수 없습니다.")
+    st.stop()
+
+# 비밀번호 확인 함수
+def check_password():
+    """AWS Parameter Store에서 비밀번호를 가져와 인증"""
+    
+    def get_password_from_aws():
+        """AWS Parameter Store에서 비밀번호 가져오기"""
+        try:
+            ssm = boto3.client('ssm', region_name='ap-northeast-2')
+            response = ssm.get_parameter(
+                Name='/stock-dashboard/DASHBOARD_PASSWORD',
+                WithDecryption=True
+            )
+            return response['Parameter']['Value']
+        except Exception as e:
+            st.error(f"비밀번호를 불러올 수 없습니다: {e}")
+            return None
+    
+    def password_entered():
+        """비밀번호 입력 확인"""
+        correct_password = get_password_from_aws()
+        if correct_password and st.session_state["password"] == correct_password:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # 보안을 위해 삭제
+        else:
+            st.session_state["password_correct"] = False
+
+    # 이미 인증됨
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # 로그인 화면
+    st.markdown("""
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 40px;
+            background: #1E1E1E;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        .login-title {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 30px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('<div class="login-container">', unsafe_allow_html=True)
+    st.markdown('<div class="login-title">🔒 포트폴리오 대시보드</div>', unsafe_allow_html=True)
+    
+    st.text_input(
+        "비밀번호를 입력하세요",
+        type="password",
+        on_change=password_entered,
+        key="password",
+        placeholder="비밀번호 입력"
+    )
+    
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("❌ 비밀번호가 틀렸습니다.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    return False
+
+# 비밀번호 확인
+if not check_password():
     st.stop()
 
 # 페이지 설정
@@ -39,7 +111,7 @@ def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
     import os
     skip_kiwoom = os.getenv("SKIP_KIWOOM", "false").lower() == "true"
     
-    assets_list = collect_all_assets(skip_kiwoom=skip_kiwoom)
+    assets_list = collect_all_assets()
     last_updated = datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')
     
     if not assets_list:
@@ -69,16 +141,19 @@ def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
     df.loc[df['asset_type'] == 'cash', 'principal_krw'] = df['eval_amount_krw']
     
     return df, exchange_rates_to_krw, last_update_time, last_updated
-# 새로고침 버튼 추가 (df, exchange_rates 줄 바로 위에)
-if st.sidebar.button("🔄 데이터 새로고침", use_container_width=True):
-    st.cache_data.clear()
-    st.rerun()
+
+# 새로고침 버튼
+col_title, col_refresh = st.columns([4, 1])
+with col_title:
+    st.title("💼 통합 포트폴리오 대시보드")
+with col_refresh:
+    if st.button("🔄 새로고침", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
 
 df, exchange_rates, rates_updated_time, portfolio_last_updated = load_data()
 
 if not df.empty:
-    st.title("💼 통합 포트폴리오 대시보드")
-    
     if portfolio_last_updated:
         st.caption(f"📅 포트폴리오 최종 조회: {portfolio_last_updated}")
 
@@ -392,4 +467,4 @@ if not df.empty:
 
 else:
     st.header("⚠️ 데이터를 로드하는 데 실패했습니다.")
-    st.info("API 연결을 확인하거나 잠시 후 다시 시도해주세요.")
+    st.info("API 연결을 확인하거나 잠시 후 다시 시도해주세요.")  
