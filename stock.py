@@ -4,21 +4,21 @@ import requests
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
-from dotenv import load_dotenv
-import streamlit as st
-import boto3 # <--- 이 줄 추가!
-
+import boto3
 
 # 상수
 KST = timezone(timedelta(hours=9))
 TOKEN_BUFFER_SEC = 300  # 5분
+
+# 디렉토리 경로 설정 (EC2 환경에서도 작동)
 try:
     DIR_PATH = Path(__file__).resolve().parent
 except NameError:
     DIR_PATH = Path(os.getcwd())
-ENV_PATH = DIR_PATH / ".env"
-load_dotenv(dotenv_path=ENV_PATH)
 
+# 토큰 저장 디렉토리 생성
+TOKEN_DIR = DIR_PATH / "tokens"
+TOKEN_DIR.mkdir(exist_ok=True)
 
 # ==================== 유틸리티 ====================
 def split_account(account: str) -> Tuple[str, str]:
@@ -40,21 +40,31 @@ def safe_int(val, default=0) -> int:
     except (ValueError, TypeError): return default
 
 # ==================== Base API 클래스 ====================
-# stock.py 파일의 BaseAPI 클래스 전체를 아래 코드로 덮어쓰세요.
 class BaseAPI:
     def __init__(self, app_key: str, app_secret: str, account_prefix: str):
         self.app_key = app_key
         self.app_secret = app_secret
-        self.token_key = f"token_{account_prefix}_{self.__class__.__name__}"
+        self.token_file = TOKEN_DIR / f"token_{account_prefix}_{self.__class__.__name__}.json"
         self._token: Optional[str] = None
 
     def get_token(self) -> str:
-        token_info = st.session_state.get(self.token_key, {})
-        if token_info and token_info.get("expires_at", 0) > now_kst().timestamp():
-            print(f"[{self.token_key}] 세션 상태 토큰 재사용.")
-            return token_info["token"]
+        """토큰 반환 (파일 캐시 → 신규 발급)"""
+        # 파일에서 로드
+        if self.token_file.exists():
+            try:
+                with open(self.token_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                expires_at = data.get("expires_at", 0)
+                if expires_at > now_kst().timestamp():
+                    self._token = self._extract_token(data)
+                    if self._token:
+                        print(f"[{self.token_file.name}] 토큰 재사용")
+                        return self._token
+            except (json.JSONDecodeError, KeyError):
+                pass
         
-        print(f"[{self.token_key}] 새 토큰 발급 중...")
+        # 신규 발급
+        print(f"[{self.token_file.name}] 새 토큰 발급 중...")
         return self._issue_token()
 
     def _extract_token(self, data: dict) -> Optional[str]:
@@ -66,9 +76,12 @@ class BaseAPI:
     def _save_token(self, data: dict, expires_at: float):
         token = self._extract_token(data)
         if token:
-            st.session_state[self.token_key] = {"token": token, "expires_at": expires_at}
+            data["expires_at"] = expires_at
+            with open(self.token_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
             self._token = token
-            print(f"[{self.token_key}] 토큰을 세션 상태에 저장 완료.")
+            print(f"[{self.token_file.name}] 토큰 저장 완료")
+
 # ==================== 한국투자증권(KIS) ====================
 class KISApi(BaseAPI):
     BASE_URL = "https://openapi.koreainvestment.com:9443"
@@ -77,15 +90,8 @@ class KISApi(BaseAPI):
         super().__init__(app_key, app_secret, f"KIS_{account_type}")
         self.account_no = account_no
         self.account_type = account_type
-        self.base_asset_info = {
-            "broker": "한국투자증권",
-            "account_type": "개인" if self.account_type == "P" else "법인",
-            "account_label": "조현익(한투)" if self.account_type == "P" else "뮤사이(한투)",
-        }
 
     def _issue_token(self) -> str:
-        # (이하 KISApi의 모든 메소드는 기존과 동일하게 유지)
-        # ...
         url = f"{self.BASE_URL}/oauth2/tokenP"
         headers = {"content-type": "application/json"}
         body = {"grant_type": "client_credentials", "appkey": self.app_key, "appsecret": self.app_secret}
@@ -97,7 +103,6 @@ class KISApi(BaseAPI):
         return self._token
     
     def _request(self, method: str, endpoint: str, tr_id: str, params: dict = None) -> Optional[dict]:
-        """KIS API 공통 요청"""
         headers = {
             "Content-Type": "application/json",
             "authorization": f"Bearer {self.get_token()}",
@@ -118,7 +123,6 @@ class KISApi(BaseAPI):
         return None
 
     def get_domestic_balance(self) -> List[dict]:
-        """국내 주식 잔고 조회"""
         cano, prdt = split_account(self.account_no)
         params = {
             "CANO": cano,
@@ -139,12 +143,11 @@ class KISApi(BaseAPI):
         return self._parse_domestic(data) if data else []
 
     def get_overseas_balance(self) -> List[dict]:
-        """해외 주식 잔고 조회 (체결기준)"""
         cano, prdt = split_account(self.account_no)
         params = {
             "CANO": cano,
             "ACNT_PRDT_CD": prdt,
-            "WCRC_FRCR_DVSN_CD": "02",  # 외화 기준
+            "WCRC_FRCR_DVSN_CD": "02",
             "TR_MKET_CD": "00",
             "NATN_CD": "000",
             "INQR_DVSN_CD": "00"
@@ -153,22 +156,17 @@ class KISApi(BaseAPI):
         data = self._request("GET", "/uapi/overseas-stock/v1/trading/inquire-present-balance",
                            "CTRP6504R", params)
         return self._parse_overseas(data) if data else []
-
-
     
     def _parse_domestic(self, data: dict) -> List[dict]:
-        """KIS 국내 잔고 파싱 → 표준 포맷"""
         result = []
         output = data.get("output", data)
 
-        # 공통 정보 템플릿
         base_asset = {
             "broker": "한국투자증권",
             "account_type": "개인" if self.account_type == "P" else "법인",
             "account_label": "조현익(한투)" if self.account_type == "P" else "뮤사이(한투)",
         }
 
-        # 보유 주식 (output1 배열)
         for stock in output.get("output1", []):
             qty = safe_int(stock.get("hldg_qty"))
             if qty > 0:
@@ -188,7 +186,6 @@ class KISApi(BaseAPI):
                 })
                 result.append(asset)
         
-        # 예수금 (output2 배열)
         if output.get("output2"):
             cash_list = output.get("output2", [])
             cash_amt = safe_int(cash_list[0].get("nxdy_excc_amt"))
@@ -212,22 +209,16 @@ class KISApi(BaseAPI):
         return result
     
     def _parse_overseas(self, data: dict) -> List[dict]:
-        """해외 잔고 응답 파싱 → 표준 포맷"""
         result = []
         
-        # 보유 주식
         for stock in data.get("output1", []):
             qty = safe_int(stock.get("ccld_qty_smtl1"))
             if qty > 0:
                 currency = stock.get("buy_crcy_cd") or "USD"
-                
-                # avg_unpr3를 우선 사용 (실제 평단가)
                 avg_buy_price = safe_float(stock.get("avg_unpr3"))
                 if avg_buy_price == 0:
-                    # avg_unpr3가 없으면 pchs_avg_pric 시도
                     avg_buy_price = safe_float(stock.get("pchs_avg_pric"))
                 
-                # 수익률 계산 (API 응답값 우선, 없으면 계산)
                 profit_loss_raw = safe_float(stock.get("evlu_pfls_amt2"))
                 profit_rate_raw = safe_float(stock.get("evlu_pfls_rt1"))
                 
@@ -248,7 +239,6 @@ class KISApi(BaseAPI):
                     "currency": currency
                 })
         
-        # 외화 예수금
         for cash in data.get("output2", []):
             amt = safe_float(cash.get("frcr_dncl_amt_2"))
             ccy = cash.get("crcy_cd") or "USD"
@@ -277,12 +267,10 @@ class KiwoomAPI(BaseAPI):
     BASE_URL = "https://api.kiwoom.com"
     
     def __init__(self, app_key: str, app_secret: str, account_no: str):
-        # account_prefix를 생성하여 BaseAPI에 전달
         super().__init__(app_key, app_secret, "KIWOOM_C")
         self.account_no = account_no
 
     def _extract_token(self, data: dict) -> Optional[str]:
-        """키움은 'token' 필드 사용"""
         return data.get("token") or data.get("access_token")
 
     def _issue_token(self) -> str:
@@ -298,8 +286,7 @@ class KiwoomAPI(BaseAPI):
         res.raise_for_status()
         data = res.json()
         
-        # expires_dt (YYYYMMDDHHMMSS) 파싱
-        expires_at = now_kst().timestamp() + 1800  # 기본 30분
+        expires_at = now_kst().timestamp() + 1800
         if "expires_dt" in data:
             try:
                 dt = datetime.strptime(data["expires_dt"], "%Y%m%d%H%M%S").replace(tzinfo=KST)
@@ -312,7 +299,6 @@ class KiwoomAPI(BaseAPI):
         return self._token
 
     def get_domestic_balance(self, qry_dt: str = None) -> List[dict]:
-        """국내 잔고 조회 (일별잔고수익률 api-id: ka01690) → 표준 포맷 반환"""
         url = f"{self.BASE_URL}/api/dostk/acnt"
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
@@ -327,42 +313,29 @@ class KiwoomAPI(BaseAPI):
         res.raise_for_status()
         raw_data = res.json()
         
-        # 원문 저장 (디버깅용)
-        raw_file = DIR_PATH / f"kiwoom_domestic_{body['qry_dt']}.json"
-        with open(raw_file, "w", encoding="utf-8") as f:
-            json.dump(raw_data, f, ensure_ascii=False, indent=2)
-        print(f"[키움 원문] {raw_file}")
-        
         return self._parse_domestic(raw_data)
-
-# stock.py 파일의 KiwoomAPI 클래스 안에 아래 코드로 덮어쓰세요.
 
     @staticmethod
     def _parse_domestic(data: dict) -> List[dict]:
-        """키움 국내 잔고 파싱 → 표준 포맷"""
         result = []
         
         if data.get("return_code") != 0:
             print(f"[키움 오류] {data.get('return_msg')}")
             return result
         
-        # 보유 주식 (day_bal_rt 배열)
         for stock in data.get("day_bal_rt", []):
             qty = safe_int(stock.get("rmnd_qty"))
             if qty > 0:
-                # --- 수정된 부분 ---
-                # 불필요한 인코딩 로직을 제거하고 API 응답값을 그대로 사용합니다.
                 name = stock.get("stk_nm", stock.get("stk_cd", "알 수 없음"))
-                # -----------------
                 
                 result.append({
                     "broker": "키움증권",
                     "account_type": "법인",
-                    "account_label": "뮤사이(키움)", # 또는 "KIWOOM(C)"
+                    "account_label": "뮤사이(키움)",
                     "market": "domestic",
                     "asset_type": "stock",
                     "ticker": stock.get("stk_cd"),
-                    "name": name, # 수정된 name 변수 사용
+                    "name": name,
                     "quantity": qty,
                     "avg_buy_price": safe_float(stock.get("buy_uv")),
                     "current_price": safe_float(stock.get("cur_prc")),
@@ -372,13 +345,12 @@ class KiwoomAPI(BaseAPI):
                     "currency": "KRW"
                 })
         
-        # 예수금 (dbst_bal)
         dbst_bal = safe_int(data.get("dbst_bal"))
         if dbst_bal > 0:
             result.append({
                 "broker": "키움증권",
                 "account_type": "법인",
-                "account_label": "뮤사이(키움)", # 또는 "KIWOOM(C)"
+                "account_label": "뮤사이(키움)",
                 "market": "domestic",
                 "asset_type": "cash",
                 "ticker": "KRW",
@@ -393,7 +365,7 @@ class KiwoomAPI(BaseAPI):
             })
         
         return result
-    
+
 # ==================== 메인 실행 ====================
 def load_account_config(prefix: str, broker: str) -> Optional[Dict]:
     """AWS Parameter Store에서 인증 정보를 로드합니다."""
@@ -406,9 +378,6 @@ def load_account_config(prefix: str, broker: str) -> Optional[Dict]:
 
     try:
         ssm_client = boto3.client('ssm', region_name='ap-northeast-2')
-
-        print(f"[{prefix}] AWS Parameter Store에서 설정 로드 중...")
-
         response = ssm_client.get_parameters(
             Names=list(param_names.values()),
             WithDecryption=True
@@ -431,14 +400,9 @@ def load_account_config(prefix: str, broker: str) -> Optional[Dict]:
     except Exception as e:
         print(f"[{prefix}] AWS Parameter Store에서 설정 로드 중 오류 발생: {e}")
         return None
-# stock.py 파일의 맨 아래 main 함수와 그 주변 부분을 아래 코드로 교체하세요.
-
-# ... (파일 상단의 KISApi, KiwoomAPI 클래스 등은 그대로 둡니다) ...
 
 def collect_all_assets():
-    """
-    모든 증권사 API를 호출하여 통합된 자산 목록을 반환하는 함수.
-    """
+    """모든 증권사 API를 호출하여 통합된 자산 목록을 반환하는 함수."""
     all_assets = []
     
     # 한국투자증권 (개인, 법인)
@@ -447,19 +411,15 @@ def collect_all_assets():
         if not config:
             continue
         
-        # --- 수정: token_file 인자 제거 및 account_prefix 이름 변경 ---
         api = KISApi(
             config["app_key"], 
             config["app_secret"], 
             config["account_no"], 
-            prefix # account_type을 prefix로 전달
+            prefix
         )
-        # ----------------------------------------------------
         
-        # --- 수정: api.base_asset_info 대신 직접 라벨 생성 및 api.account_type 사용 ---
         label = f"한국투자증권({'개인' if api.account_type == 'P' else '법인'})"
         print(f"[{label}] 데이터 수집 중...")
-        # ----------------------------------------------------------------
 
         all_assets.extend(api.get_domestic_balance())
         all_assets.extend(api.get_overseas_balance())
@@ -473,9 +433,7 @@ def collect_all_assets():
             kiw_config["account_no"]
         )
 
-        # --- 수정: api.base_asset_info 대신 직접 라벨 생성 ---
         print(f"[키움증권(법인)] 데이터 수집 중...")
-        # -----------------------------------------------
         try:
             all_assets.extend(api.get_domestic_balance())
         except Exception as e:
