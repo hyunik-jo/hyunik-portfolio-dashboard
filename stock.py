@@ -401,7 +401,7 @@ def load_account_config(prefix: str, broker: str) -> Optional[Dict]:
         print(f"[{prefix}] AWS Parameter Store에서 설정 로드 중 오류 발생: {e}")
         return None
 
-def collect_all_assets():
+def collect_all_assets(skip_kiwoom=False):
     """모든 증권사 API를 호출하여 통합된 자산 목록을 반환하는 함수."""
     all_assets = []
     
@@ -426,19 +426,23 @@ def collect_all_assets():
     
     # 키움증권 (법인)
     kiw_config = load_account_config("C", "kiwoom")
-    if kiw_config:
-        api = KiwoomAPI(
-            kiw_config["app_key"], 
-            kiw_config["app_secret"],
-            kiw_config["account_no"]
-        )
+    if skip_kiwoom:
+        print("[키움증권(법인)] IP 제한으로 인해 스킵됨")
+    else:
+        kiw_config = load_account_config("C", "kiwoom")
+        if kiw_config:
+            api = KiwoomAPI(
+                kiw_config["app_key"], 
+                kiw_config["app_secret"],
+                kiw_config["account_no"]
+            )
 
-        print(f"[키움증권(법인)] 데이터 수집 중...")
-        try:
-            all_assets.extend(api.get_domestic_balance())
-        except Exception as e:
-            print(f"[오류] 키움증권 데이터 수집 실패: {e}")
-            
+            print(f"[키움증권(법인)] 데이터 수집 중...")
+            try:
+                all_assets.extend(api.get_domestic_balance())
+            except Exception as e:
+                print(f"[오류] 키움증권 데이터 수집 실패: {e}")
+                
     return all_assets
 
 def main():
