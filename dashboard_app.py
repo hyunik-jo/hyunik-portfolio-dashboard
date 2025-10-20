@@ -69,6 +69,10 @@ def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
     df.loc[df['asset_type'] == 'cash', 'principal_krw'] = df['eval_amount_krw']
     
     return df, exchange_rates_to_krw, last_update_time, last_updated
+# 새로고침 버튼 추가 (df, exchange_rates 줄 바로 위에)
+if st.sidebar.button("🔄 데이터 새로고침", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
 
 df, exchange_rates, rates_updated_time, portfolio_last_updated = load_data()
 
