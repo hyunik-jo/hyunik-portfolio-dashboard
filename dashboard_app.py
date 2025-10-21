@@ -316,15 +316,13 @@ if not df.empty:
                     if 'selected_market' not in st.session_state:
                         st.session_state['selected_market'] = None
                     
-                    total_stock_value = stock_only_for_market['eval_amount_krw'].sum()
-                    
                     # 클릭된 시장이 있으면 해당 시장의 종목별 차트 표시
                     if st.session_state['selected_market']:
                         selected_market = st.session_state['selected_market']
                         market_stocks = stock_only_for_market[stock_only_for_market['market'] == selected_market].copy()
                         
                         if not market_stocks.empty:
-                            # 종목별 그룹화 및 정렬
+                            # 종목별 그룹화 및 정렬 (원화 환산 기준)
                             stock_summary = market_stocks.groupby(['ticker', 'name', 'currency']).agg({
                                 'eval_amount_krw': 'sum',
                                 'quantity': 'sum'
@@ -338,17 +336,11 @@ if not df.empty:
                             
                             market_title = '국내주식' if selected_market == 'domestic' else '해외주식'
                             
-                            # 해외주식인 경우 색상 패턴, 국내주식인 경우 다른 색상 패턴
-                            if selected_market == 'domestic':
-                                stock_colors = [
-                                    '#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#592941',
-                                    '#72DDF7', '#B33DC6', '#F7B801', '#DC5E5E', '#6B5B95'
-                                ]
-                            else:
-                                stock_colors = [
-                                    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-                                    '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
-                                ]
+                            # 다른 차트들과 일치하는 색상 패턴 사용
+                            stock_colors = [
+                                '#8B9DC3', '#A8B5C7', '#9CA8B8', '#B8C5D6', '#9EAAB5',
+                                '#C9D6E3', '#7B8FA3', '#A6B4C4', '#BCC9D8', '#8C9CAD'
+                            ]
                             
                             fig = px.pie(top_10_stocks, names='display_name', values='eval_amount_krw',
                                         title=f'{market_title} 주요 종목 (Top 10)', hole=0.35,
@@ -369,7 +361,9 @@ if not df.empty:
                                     x=0.5,
                                     font=dict(size=10)
                                 ),
-                                margin=dict(l=10, r=10, t=50, b=80)
+                                margin=dict(l=10, r=10, t=50, b=80),
+                                plot_bgcolor='rgba(0,0,0,0)',
+                                paper_bgcolor='rgba(0,0,0,0)'
                             )
                             
                             # 뒤로가기 버튼 표시
@@ -382,19 +376,21 @@ if not df.empty:
                             
                     else:
                         # 기본 시장별 분포 차트
+                        total_stock_value = stock_only_for_market['eval_amount_krw'].sum()
                         market_summary = stock_only_for_market.groupby('market')['eval_amount_krw'].sum().reset_index()
                         market_summary['market_name'] = market_summary['market'].map({
                             'domestic': '국내주식',
                             'overseas': '해외주식'
                         })
                         
-                        # 퍼센테이지 계산
-                        market_summary['percentage'] = (market_summary['eval_amount_krw'] / total_stock_value * 100).round(1)
+                        # 퍼센테이지 계산이 올바르게 되도록 확인
+                        if total_stock_value > 0:
+                            market_summary['percentage'] = (market_summary['eval_amount_krw'] / total_stock_value * 100).round(1)
                         
-                        # 더 세련된 색상 적용
+                        # 다른 차트들과 유사한 색상 사용
                         market_colors = {
-                            '국내주식': '#667eea',  # 더 세련된 블루
-                            '해외주식': '#f093fb'   # 더 세련된 핑크
+                            '국내주식': '#c7b273',  # 계좌별 차트와 유사한 색상
+                            '해외주식': '#8B9DC3'   # 종목별 차트와 유사한 색상
                         }
                         
                         fig = px.pie(market_summary, names='market_name', values='eval_amount_krw',
@@ -417,7 +413,9 @@ if not df.empty:
                                 x=0.5,
                                 font=dict(size=10)
                             ),
-                            margin=dict(l=10, r=10, t=50, b=80)
+                            margin=dict(l=10, r=10, t=50, b=80),
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            paper_bgcolor='rgba(0,0,0,0)'
                         )
                         
                         # plotly_events로 클릭 이벤트 처리 (라이브러리가 있을 때만)
