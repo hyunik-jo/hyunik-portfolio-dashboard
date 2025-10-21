@@ -307,30 +307,25 @@ if not df.empty:
                 st.plotly_chart(fig, use_container_width=True)
 
         with col_chart3:
-            # stock만 필터링
             stock_only_df = filtered_df[
                 (filtered_df['asset_type'] == 'stock') & 
                 (filtered_df['market'].notna())
             ].copy()
             
             if not stock_only_df.empty:
-                # market 기준으로 그룹화
                 market_summary = stock_only_df.groupby('market', as_index=False)['eval_amount_krw'].sum()
                 
-                # 라벨 매핑
                 market_label_map = {
                     'domestic': '국내',
                     'overseas': '해외'
                 }
                 market_summary['market_label'] = market_summary['market'].map(market_label_map)
                 
-                # 색상 맵
                 market_colors_map = {
                     'domestic': '#003478',
                     'overseas': '#B22234'
                 }
                 
-                # 차트 생성
                 fig = px.pie(
                     market_summary, 
                     names='market_label', 
@@ -361,7 +356,6 @@ if not df.empty:
                     margin=dict(l=10, r=10, t=50, b=80)
                 )
                 
-                # plotly_events 사용
                 if PLOTLY_EVENTS_AVAILABLE:
                     selected_points = plotly_events(
                         fig, 
@@ -372,7 +366,6 @@ if not df.empty:
                         override_height=450
                     )
                     
-                    # 클릭 이벤트 처리
                     if selected_points and len(selected_points) > 0:
                         if 'pointNumber' in selected_points[0]:
                             point_index = selected_points[0]['pointNumber']
@@ -386,7 +379,6 @@ if not df.empty:
             else:
                 st.warning("주식 데이터가 없습니다.")
 
-        # 선택된 market의 종목 구성 표시
         if 'selected_market' in st.session_state:
             st.markdown("---")
             selected_market = st.session_state['selected_market']
@@ -394,20 +386,15 @@ if not df.empty:
             
             st.subheader(f"📊 {market_name} 종목 구성")
             
-            # 선택된 market의 주식만 필터링
             selected_market_stocks = filtered_df[
                 (filtered_df['market'] == selected_market) & 
                 (filtered_df['asset_type'] == 'stock')
             ].copy()
             
             if not selected_market_stocks.empty:
-                # Top 10 종목 선택
                 top_stocks = selected_market_stocks.nlargest(10, 'eval_amount_krw').copy()
-                
-                # 표시용 이름 설정
                 top_stocks['display_name'] = top_stocks['name']
                 
-                # 색상 설정
                 if selected_market == 'domestic':
                     colors = ['#003478', '#0047AB', '#4169E1', '#5B9BD5', '#6FA8DC',
                              '#93C5FD', '#A8DADC', '#B4D7E8', '#C9E4F7', '#DBEAFE']
@@ -418,7 +405,6 @@ if not df.empty:
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    # 파이 차트
                     fig_detail = px.pie(
                         top_stocks, 
                         names='display_name', 
@@ -447,7 +433,6 @@ if not df.empty:
                     st.plotly_chart(fig_detail, use_container_width=True)
                 
                 with col2:
-                    # 바 차트
                     fig_bar = px.bar(
                         top_stocks.sort_values('eval_amount_krw', ascending=True),
                         y='display_name',
@@ -470,7 +455,6 @@ if not df.empty:
                     )
                     st.plotly_chart(fig_bar, use_container_width=True)
                 
-                # 상세 테이블
                 st.markdown("#### 📋 상세 내역")
                 detail_table = selected_market_stocks.copy()
                 detail_table = detail_table.sort_values('eval_amount_krw', ascending=False)
@@ -491,7 +475,6 @@ if not df.empty:
                     use_container_width=True
                 )
                 
-                # 선택 해제 버튼
                 if st.button("🔙 전체 보기로 돌아가기"):
                     del st.session_state['selected_market']
                     st.rerun()
@@ -516,4 +499,217 @@ if not df.empty:
                 rate_display = f"{account_pl_rate:+.1f}%"
                 
                 if account_pl < 0:
-                    expander_title = f"**{account_label}** | 평가: ₩{account_eval:,.0f} | 손익: :red[{pl_display
+                    expander_title = f"**{account_label}** | 평가: ₩{account_eval:,.0f} | 손익: :red[{pl_display}] (:red[{rate_display}])"
+                else:
+                    expander_title = f"**{account_label}** | 평가: ₩{account_eval:,.0f} | 손익: {pl_display} ({rate_display})"
+                
+                with st.expander(expander_title, expanded=False):
+                    display_stocks = account_stocks[['name', 'ticker', 'quantity', 'avg_buy_price', 
+                                                     'current_price', 'principal_krw', 'eval_amount_krw', 
+                                                     'profit_loss_krw']].copy()
+                    
+                    display_stocks['weight'] = (display_stocks['eval_amount_krw'] / account_eval * 100).round(1)
+                    display_stocks['profit_rate'] = (
+                        (display_stocks['profit_loss_krw'] / display_stocks['principal_krw'] * 100)
+                        .fillna(0).round(1)
+                    )
+                    
+                    display_stocks['종목명'] = display_stocks['name']
+                    display_stocks['티커'] = display_stocks['ticker']
+                    display_stocks['수량'] = display_stocks['quantity'].apply(lambda x: f"{int(x):,}")
+                    display_stocks['평단가'] = display_stocks['avg_buy_price'].apply(lambda x: f"{x:,.2f}")
+                    display_stocks['현재가'] = display_stocks['current_price'].apply(lambda x: f"{x:,.2f}")
+                    display_stocks['투자원금'] = display_stocks['principal_krw'].apply(lambda x: f"₩{x:,.0f}")
+                    display_stocks['평가금액'] = display_stocks['eval_amount_krw'].apply(lambda x: f"₩{x:,.0f}")
+                    display_stocks['손익'] = display_stocks['profit_loss_krw'].apply(
+                        lambda x: f"+₩{x:,.0f}" if x >= 0 else f"-₩{abs(x):,.0f}"
+                    )
+                    display_stocks['수익률(%)'] = display_stocks['profit_rate'].apply(lambda x: f"{x:+.1f}%")
+                    display_stocks['비중(%)'] = display_stocks['weight'].apply(lambda x: f"{x:.1f}%")
+                    
+                    total_principal_sum = display_stocks['principal_krw'].sum()
+                    total_eval_sum = display_stocks['eval_amount_krw'].sum()
+                    total_pl_sum = display_stocks['profit_loss_krw'].sum()
+                    
+                    total_row = pd.DataFrame([{
+                        '종목명': '**합계**',
+                        '티커': '',
+                        '수량': '',
+                        '평단가': '',
+                        '현재가': '',
+                        '투자원금': f"₩{total_principal_sum:,.0f}",
+                        '평가금액': f"₩{total_eval_sum:,.0f}",
+                        '손익': f"+₩{total_pl_sum:,.0f}" if total_pl_sum >= 0 else f"-₩{abs(total_pl_sum):,.0f}",
+                        '수익률(%)': f"{account_pl_rate:+.1f}%",
+                        '비중(%)': '100.0%'
+                    }])
+                    
+                    display_with_total = pd.concat([
+                        display_stocks[['종목명', '티커', '수량', '평단가', '현재가', 
+                                       '투자원금', '평가금액', '손익', '수익률(%)', '비중(%)']],
+                        total_row
+                    ], ignore_index=True)
+                    
+                    def highlight_negative(val):
+                        if isinstance(val, str):
+                            if '-₩' in val or (val.startswith('-') and '%' in val):
+                                return 'color: #FF4B4B'
+                        return ''
+                    
+                    styled_df = display_with_total.style.map(highlight_negative, subset=['손익', '수익률(%)'])
+                    
+                    st.dataframe(
+                        styled_df,
+                        hide_index=True,
+                        use_container_width=True
+                    )
+        
+        st.markdown("---")
+        st.subheader("📈 전체 종목 요약")
+        
+        if not stock_only.empty:
+            stock_summary = stock_only.groupby(['ticker', 'name', 'currency']).agg({
+                'eval_amount_krw': 'sum',
+                'principal_krw': 'sum',
+                'quantity': 'sum'
+            }).reset_index()
+            
+            stock_summary['profit_loss_krw'] = stock_summary['eval_amount_krw'] - stock_summary['principal_krw']
+            stock_summary['profit_rate'] = (
+                (stock_summary['profit_loss_krw'] / stock_summary['principal_krw'] * 100)
+                .fillna(0).round(1)
+            )
+            stock_summary['weight'] = (stock_summary['eval_amount_krw'] / stock_summary['eval_amount_krw'].sum() * 100).round(1)
+            
+            stock_summary = stock_summary.sort_values('eval_amount_krw', ascending=False).reset_index(drop=True)
+            
+            display_summary = stock_summary.copy()
+            display_summary['종목명'] = display_summary['name']
+            display_summary['티커'] = display_summary['ticker']
+            display_summary['통화'] = display_summary['currency']
+            display_summary['수량'] = display_summary['quantity'].apply(lambda x: f"{int(x):,}")
+            display_summary['투자원금'] = display_summary['principal_krw'].apply(lambda x: f"₩{x:,.0f}")
+            display_summary['평가금액'] = display_summary['eval_amount_krw'].apply(lambda x: f"₩{x:,.0f}")
+            display_summary['손익'] = display_summary['profit_loss_krw'].apply(
+                lambda x: f"+₩{x:,.0f}" if x >= 0 else f"-₩{abs(x):,.0f}"
+            )
+            display_summary['수익률(%)'] = display_summary['profit_rate'].apply(lambda x: f"{x:+.1f}%")
+            display_summary['비중(%)'] = display_summary['weight'].apply(lambda x: f"{x:.1f}%")
+            
+            total_stock_principal = stock_summary['principal_krw'].sum()
+            total_stock_eval = stock_summary['eval_amount_krw'].sum()
+            total_stock_pl = total_stock_eval - total_stock_principal
+            total_stock_rate = (total_stock_pl / total_stock_principal * 100) if total_stock_principal > 0 else 0
+            
+            total_row_summary = pd.DataFrame([{
+                '종목명': '**합계**',
+                '티커': '',
+                '통화': '',
+                '수량': f"{int(stock_summary['quantity'].sum()):,}",
+                '투자원금': f"₩{total_stock_principal:,.0f}",
+                '평가금액': f"₩{total_stock_eval:,.0f}",
+                '손익': f"+₩{total_stock_pl:,.0f}" if total_stock_pl >= 0 else f"-₩{abs(total_stock_pl):,.0f}",
+                '수익률(%)': f"{total_stock_rate:+.1f}%",
+                '비중(%)': '100.0%'
+            }])
+            
+            display_summary_with_total = pd.concat([
+                display_summary[['종목명', '티커', '통화', '수량', '투자원금', '평가금액', '손익', '수익률(%)', '비중(%)']],
+                total_row_summary
+            ], ignore_index=True)
+            
+            def highlight_negative(val):
+                if isinstance(val, str):
+                    if '-₩' in val or (val.startswith('-') and '%' in val):
+                        return 'color: #FF4B4B'
+                return ''
+            
+            styled_summary = display_summary_with_total.style.map(highlight_negative, subset=['손익', '수익률(%)'])
+            
+            st.dataframe(
+                styled_summary,
+                hide_index=True,
+                use_container_width=True
+            )
+            
+            csv = display_summary.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 CSV 다운로드",
+                data=csv,
+                file_name=f"portfolio_summary_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+        
+        st.markdown("---")
+        st.subheader("💰 예수금 현황")
+        
+        cash_df = filtered_df[filtered_df['asset_type'] == 'cash'].copy()
+        if not cash_df.empty:
+            account_cash_summary = cash_df.groupby('account_label')['eval_amount_krw'].sum().reset_index()
+            account_cash_summary = account_cash_summary.sort_values('eval_amount_krw', ascending=False)
+            
+            for _, row in account_cash_summary.iterrows():
+                account = row['account_label']
+                account_total_krw = row['eval_amount_krw']
+                
+                account_cash_detail = cash_df[cash_df['account_label'] == account].copy()
+                
+                with st.expander(f"**{account}** | 총 예수금: ₩{account_total_krw:,.0f}", expanded=False):
+                    detail_display = account_cash_detail[['currency', 'eval_amount', 'eval_amount_krw']].copy()
+                    detail_display['통화'] = detail_display['currency']
+                    detail_display['보유액'] = detail_display.apply(
+                        lambda r: f"{r['currency']} {r['eval_amount']:,.2f}", axis=1
+                    )
+                    detail_display['원화환산'] = detail_display['eval_amount_krw'].apply(lambda x: f"₩{x:,.0f}")
+                    
+                    st.dataframe(
+                        detail_display[['통화', '보유액', '원화환산']],
+                        hide_index=True,
+                        use_container_width=True
+                    )
+
+    with tab2:
+        st.subheader("📈 투자 성과 분석")
+        st.info("🚧 준비 중입니다. 곧 벤치마크 대비 수익률 분석 기능이 추가됩니다.")
+        
+        st.markdown("""
+        ### 📋 구현 예정 기능
+        
+        1. **수익률 비교**
+           - 내 포트폴리오 vs KOSPI
+           - 내 포트폴리오 vs NASDAQ
+           - 내 포트폴리오 vs S&P 500
+        
+        2. **기간별 성과**
+           - 1개월, 3개월, 6개월, 1년, 전체
+           - 월별/분기별 수익률 추이
+        
+        3. **리스크 지표**
+           - 변동성 (표준편차)
+           - 샤프 비율
+           - 최대 낙폭 (MDD)
+        
+        4. **거래 내역 분석**
+           - 입출금 내역 제외
+           - 순수 투자 수익률 계산
+           - 매매 손익 분석
+        """)
+        
+        st.markdown("---")
+        st.subheader("현재 포트폴리오 기본 통계")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        total_eval = df['eval_amount_krw'].sum()
+        total_principal = df['principal_krw'].sum()
+        total_return = ((total_eval - total_principal) / total_principal * 100) if total_principal > 0 else 0
+        stock_count = len(df[df['asset_type'] == 'stock'])
+        
+        col1.metric("보유 종목 수", f"{stock_count}개")
+        col2.metric("총 투자 원금", f"₩{total_principal:,.0f}")
+        col3.metric("총 평가 금액", f"₩{total_eval:,.0f}")
+        col4.metric("누적 수익률", f"{total_return:+.2f}%")
+
+else:
+    st.header("⚠️ 데이터를 로드하는 데 실패했습니다.")
+    st.info("API 연결을 확인하거나 잠시 후 다시 시도해주세요.")
