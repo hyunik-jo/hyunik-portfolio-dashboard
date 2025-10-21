@@ -1,4 +1,169 @@
-from pathlib import Path
+# 포트폴리오 구성
+    st.subheader("🎯 포트폴리오 구성")
+    
+    # 첫 번째 줄: 계좌별 비중 + 종목별 비중 + 통화별 비중
+    col_chart1, col_chart2, col_chart3 = st.columns(3)
+
+    with col_chart1:
+        if not filtered_df.empty:
+            account_summary = filtered_df.groupby('account_label')['eval_amount_krw'].sum().reset_index()
+            
+            color_map = {}
+            for account in account_summary['account_label']:
+                if '조현익' in account:
+                    color_map[account] = '#c7b273'
+                elif '뮤사이' in account:
+                    if '키움' in account:
+                        color_map[account] = '#BFBFBF'
+                    elif '한투' in account:
+                        color_map[account] = '#E5E5E5'
+                    else:
+                        color_map[account] = '#D3D3D3'
+                else:
+                    color_map[account] = None
+            
+            fig = px.pie(account_summary, names='account_label', values='eval_amount_krw', 
+                        title='계좌별 비중', hole=0.35,
+                        color='account_label',
+                        color_discrete_map=color_map)
+            fig.update_traces(
+                textposition='inside', 
+                texttemplate='<b>%{label}</b><br>%{percent}',
+                textfont=dict(size=12, family='Arial')
+            )
+            fig.update_layout(
+                height=450, 
+                showlegend=True, 
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.15,
+                    xanchor="center",
+                    x=0.5,
+                    font=dict(size=10)
+                ),
+                margin=dict(l=10, r=10, t=50, b=80)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    with col_chart2:
+        stock_df = filtered_df[filtered_df['asset_type']=='stock']
+        if not stock_df.empty:
+            top_stocks = stock_df.nlargest(10, 'eval_amount_krw').copy()
+            
+            top_stocks['display_name'] = top_stocks.apply(
+                lambda row: row['name'] if row['market'] == 'domestic' else row['ticker'], 
+                axis=1
+            )
+            
+            stock_colors = [
+                '#8B9DC3', '#A8B5C7', '#9CA8B8', '#B8C5D6', '#9EAAB5',
+                '#C9D6E3', '#7B8FA3', '#A6B4C4', '#BCC9D8', '#8C9CAD'
+            ]
+            
+            fig = px.pie(top_stocks, names='display_name', values='eval_amount_krw', 
+                        title='종목별 비중 (Top 10)', hole=0.35,
+                        color_discrete_sequence=stock_colors)
+            fig.update_traces(
+                textposition='inside', 
+                texttemplate='<b>%{label}</b><br>%{percent}',
+                textfont=dict(size=12, family='Arial')
+            )
+            fig.update_layout(
+                height=450, 
+                showlegend=True, 
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.15,
+                    xanchor="center",
+                    x=0.5,
+                    font=dict(size=10)
+                ),
+                margin=dict(l=10, r=10, t=50, b=80)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    with col_chart3:
+        # 통화별 비중 (막대 그래프)
+        stock_df = filtered_df[filtered_df['asset_type']=='stock']
+        if not stock_df.empty:
+            currency_summary = stock_df.groupby('currency')['eval_amount_krw'].sum().reset_index()
+            currency_summary = currency_summary.sort_values('eval_amount_krw', ascending=True)
+            
+            # 통화 이모지 매핑
+            currency_emoji = {
+                'KRW': '🇰🇷 KRW',
+                'USD': '🇺🇸 USD',
+                'HKD': '🇭🇰 HKD',
+                'JPY': '🇯🇵 JPY',
+                'CNY': '🇨🇳 CNY'
+            }
+            currency_summary['currency_display'] = currency_summary['currency'].map(
+                lambda x: currency_emoji.get(x, f'💱 {x}')
+            )
+            
+            # 색상 설정
+            currency_colors = {
+                'KRW': '#4A90E2',
+                'USD': '#E24A4A',
+                'HKD': '#50C878',
+                'JPY': '#FFD700',
+                'CNY': '#FF6B6B'
+            }
+            
+            fig = go.Figure()
+            
+            for _, row in currency_summary.iterrows():
+                color = currency_colors.get(row['currency'], '#CCCCCC')
+                fig.add_trace(go.Bar(
+                    y=[row['currency_display']],
+                    x=[row['eval_amount_krw']],
+                    orientation='h',
+                    name=row['currency_display'],
+                    marker=dict(color=color),
+                    text=[f"₩{row['eval_amount_krw']:,.0f}"],
+                    textposition='auto',
+                    textfont=dict(size=11),
+                    showlegend=False
+                ))
+            
+            fig.update_layout(
+                title='💱 통화별 비중',
+                height=450,
+                xaxis_title='평가금액 (₩)',
+                yaxis_title='',
+                margin=dict(l=10, r=10, t=50, b=30),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            
+            fig.update_xaxis(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.2)')
+            fig.update_yaxis(showgrid=False)
+            
+            st.plotly_chart(fig, use_container_width=True)
+
+    # 두 번째 줄: 수익률 랭킹 + 시장별 분포
+    col_chart3, col_chart4 = st.columns(2)
+
+    with col_chart3:
+        stock_df = filtered_df[filtered_df['asset_type']=='stock'].copy()
+        if not stock_df.empty:
+            # 수익률 계산
+            stock_df['return_rate'] = (
+                (stock_df['profit_loss_krw'] / stock_df['principal_krw'] * 100)
+                .fillna(0)
+            )
+            
+            # Top 5
+            top5 = stock_df.nlargest(5, 'return_rate')[['name', 'ticker', 'return_rate', 'market']].copy()
+            top5['display_name'] = top5.apply(
+                lambda row: row['name'] if row['market'] == 'domestic' else row['ticker'], 
+                axis=1
+            )
+            
+            # Bottom 5
+            bottom5 =from pathlib import Path
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -91,33 +256,42 @@ st.set_page_config(layout="wide", page_title="통합 포트폴리오 대시보�
 # 커스텀 CSS
 st.markdown("""
 <style>
-    /* 기본 (큰 데스크톱 화면) */
-    .main-metric { 
-        font-size: 2.5rem; 
-        font-weight: bold; 
-    }
+    .main-metric { font-size: 2.5rem; font-weight: bold; }
     .negative-text { color: #FF4B4B; }
-    /* 새로고침 버튼 기본 스타일 */
-    div[data-testid="stHorizontalBlock"] > div:last-child button {
-        max-width: 200px;
-        float: right;
-    }
-
-    /* --- 태블릿 화면용 규칙 추가 (769px ~ 1024px) --- */ /* <--- 이 부분이 추가됨 */
-    @media (min-width: 769px) and (max-width: 1024px) {
-        .main-metric { 
-            font-size: 1.5rem; /* 태블릿 폰트 크기 */
+    
+    /* 태블릿 (iPad 등) 대응 */
+    @media (max-width: 1024px) and (min-width: 769px) {
+        .main-metric { font-size: 1.5rem; }
+        /* Streamlit metric 컴포넌트 크기 조정 */
+        [data-testid="stMetricValue"] {
+            font-size: 1.2rem !important;
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 0.9rem !important;
+        }
+        [data-testid="stMetricDelta"] {
+            font-size: 0.85rem !important;
         }
     }
-
-    /* --- 작은 화면용 규칙 (모바일, ~ 768px) --- */
+    
+    /* 모바일 대응 */
     @media (max-width: 768px) {
-        .main-metric { 
-            font-size: 1.8rem; /* 모바일 폰트 크기 */
+        .main-metric { font-size: 1.8rem; }
+        [data-testid="stMetricValue"] {
+            font-size: 1rem !important;
         }
-        /* 모바일에서 새로고침 버튼 크기 조정 */
-        div[data-testid="stHorizontalBlock"] > div:last-child button {
-            max-width: 150px;
+        [data-testid="stMetricLabel"] {
+            font-size: 0.8rem !important;
+        }
+        [data-testid="stMetricDelta"] {
+            font-size: 0.75rem !important;
+        }
+    }
+    
+    /* 차트 제목 반응형 */
+    @media (max-width: 1024px) {
+        .js-plotly-plot .plotly .gtitle {
+            font-size: 14px !important;
         }
     }
 </style>
@@ -166,12 +340,13 @@ def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
     
     return df, exchange_rates_to_krw, last_update_time, last_updated
 
-# 새로고침 버튼
-col_title, col_refresh = st.columns([6, 1])
-with col_title:
-    st.title("💼 통합 포트폴리오 대시보드")
-with col_refresh:
-    if st.button("🔄 새로고침"):
+# 타이틀과 새로고침 버튼
+st.title("💼 통합 포트폴리오 대시보드")
+
+# 새로고침 버튼 (작게)
+col1, col2, col3 = st.columns([5, 1, 0.5])
+with col2:
+    if st.button("🔄", help="데이터 새로고침"):
         st.cache_data.clear()
         st.rerun()
 
@@ -180,6 +355,12 @@ df, exchange_rates, rates_updated_time, portfolio_last_updated = load_data()
 if not df.empty:
     if portfolio_last_updated:
         st.caption(f"📅 포트폴리오 최종 조회: {portfolio_last_updated}")
+
+    # 탭 생성
+    tab1, tab2 = st.tabs(["📊 포트폴리오 현황", "📈 성과 분석"])
+    
+    # ==================== 탭 1: 포트폴리오 현황 ====================
+    with tab1:
 
     # 사이드바
     st.sidebar.header("필터 옵션")
@@ -219,7 +400,9 @@ if not df.empty:
 
     # 포트폴리오 구성
     st.subheader("🎯 포트폴리오 구성")
-    col_chart1, col_chart2, col_chart3 = st.columns(3)
+    
+    # 첫 번째 줄: 계좌별 비중 + 종목별 비중
+    col_chart1, col_chart2 = st.columns(2)
 
     with col_chart1:
         if not filtered_df.empty:
@@ -249,7 +432,7 @@ if not df.empty:
                 textfont=dict(size=14, family='Arial')
             )
             fig.update_layout(
-                height=600, 
+                height=500, 
                 showlegend=True, 
                 legend=dict(
                     orientation="h",
@@ -287,7 +470,7 @@ if not df.empty:
                 textfont=dict(size=14, family='Arial')
             )
             fig.update_layout(
-                height=600, 
+                height=500, 
                 showlegend=True, 
                 legend=dict(
                     orientation="h",
@@ -301,50 +484,55 @@ if not df.empty:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # --- with col_chart3: 블록 전체를 아래 코드로 교체하세요 ---
-
-    with col_chart3:
-        asset_df = filtered_df[filtered_df['asset_type'].isin(['stock', 'cash'])]
-        if not asset_df.empty:
-            # 1. 국가 정보를 담는 'country' 열 생성
-            def get_country(row):
-                if row['market'] == 'domestic':
-                    return '🇰🇷 대한민국'
-                elif row['currency'] == 'USD':
-                    return '🇺🇸 미국'
-                elif row['currency'] == 'HKD':
-                    return '🇭🇰 홍콩'
-                else:
-                    return '기타'
-            asset_df['country'] = asset_df.apply(get_country, axis=1)
-
-            country_summary = asset_df.groupby('country')['eval_amount_krw'].sum().reset_index()
+    # 두 번째 줄: 시장별 분포 (국내 vs 해외)
+    st.markdown("")  # 간격
+    
+    if not filtered_df.empty:
+        # 주식만 필터링
+        stock_only_for_market = filtered_df[filtered_df['asset_type'] == 'stock'].copy()
+        
+        if not stock_only_for_market.empty:
+            market_summary = stock_only_for_market.groupby('market')['eval_amount_krw'].sum().reset_index()
             
-            # 2. 국가별 색상 지정
-            country_colors = {
-                '🇰🇷 대한민국': '#003478',
-                '🇺🇸 미국': '#B22234',
-                '🇭🇰 홍콩': '#DE2910'
+            # 시장 이름 한글화
+            market_summary['market_name'] = market_summary['market'].map({
+                'domestic': '🇰🇷 국내 주식',
+                'overseas': '🌎 해외 주식'
+            })
+            
+            # 색상 설정
+            market_colors = {
+                '🇰🇷 국내 주식': '#4A90E2',  # 파란색
+                '🌎 해외 주식': '#E24A4A'   # 빨간색
             }
-
-            fig = px.pie(country_summary, names='country', values='eval_amount_krw',
-                        title='국가별 비중', hole=0.35,
-                        color='country',
-                        color_discrete_map=country_colors)
-            fig.update_traces(
-                textposition='inside',
-                texttemplate='<b>%{label}</b><br>%{percent}',
-                textfont=dict(size=14, family='Arial')
-            )
-            fig.update_layout(
-                height=600,
-                showlegend=True,
-                legend=dict(
-                    orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5, font=dict(size=12)
-                ),
-                margin=dict(l=20, r=20, t=60, b=100)
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            
+            # 가운데 정렬을 위한 컬럼 구성
+            col_left, col_center, col_right = st.columns([1, 2, 1])
+            
+            with col_center:
+                fig = px.pie(market_summary, names='market_name', values='eval_amount_krw',
+                            title='🌍 시장별 분포', hole=0.35,
+                            color='market_name',
+                            color_discrete_map=market_colors)
+                fig.update_traces(
+                    textposition='inside',
+                    texttemplate='<b>%{label}</b><br>%{percent}<br>₩%{value:,.0f}',
+                    textfont=dict(size=14, family='Arial')
+                )
+                fig.update_layout(
+                    height=500,
+                    showlegend=True,
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top",
+                        y=-0.1,
+                        xanchor="center",
+                        x=0.5,
+                        font=dict(size=12)
+                    ),
+                    margin=dict(l=20, r=20, t=60, b=100)
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
     # 계좌별 상세 보유 현황
     st.markdown("---")
@@ -534,6 +722,51 @@ if not df.empty:
                     use_container_width=True
                 )
 
+    # ==================== 탭 2: 성과 분석 ====================
+    with tab2:
+        st.subheader("📈 투자 성과 분석")
+        st.info("🚧 준비 중입니다. 곧 벤치마크 대비 수익률 분석 기능이 추가됩니다.")
+        
+        # 향후 구현될 기능 미리보기
+        st.markdown("""
+        ### 📋 구현 예정 기능
+        
+        1. **수익률 비교**
+           - 내 포트폴리오 vs KOSPI
+           - 내 포트폴리오 vs NASDAQ
+           - 내 포트폴리오 vs S&P 500
+        
+        2. **기간별 성과**
+           - 1개월, 3개월, 6개월, 1년, 전체
+           - 월별/분기별 수익률 추이
+        
+        3. **리스크 지표**
+           - 변동성 (표준편차)
+           - 샤프 비율
+           - 최대 낙폭 (MDD)
+        
+        4. **거래 내역 분석**
+           - 입출금 내역 제외
+           - 순수 투자 수익률 계산
+           - 매매 손익 분석
+        """)
+        
+        # 간단한 통계 미리보기
+        st.markdown("---")
+        st.subheader("현재 포트폴리오 기본 통계")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        total_eval = df['eval_amount_krw'].sum()
+        total_principal = df['principal_krw'].sum()
+        total_return = ((total_eval - total_principal) / total_principal * 100) if total_principal > 0 else 0
+        stock_count = len(df[df['asset_type'] == 'stock'])
+        
+        col1.metric("보유 종목 수", f"{stock_count}개")
+        col2.metric("총 투자 원금", f"₩{total_principal:,.0f}")
+        col3.metric("총 평가 금액", f"₩{total_eval:,.0f}")
+        col4.metric("누적 수익률", f"{total_return:+.2f}%")
+
 else:
     st.header("⚠️ 데이터를 로드하는 데 실패했습니다.")
-    st.info("API 연결을 확인하거나 잠시 후 다시 시도해주세요.")  
+    st.info("API 연결을 확인하거나 잠시 후 다시 시도해주세요.")
