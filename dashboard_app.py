@@ -91,11 +91,31 @@ st.set_page_config(layout="wide", page_title="통합 포트폴리오 대시보�
 # 커스텀 CSS
 st.markdown("""
 <style>
-    .main-metric { font-size: 2.5rem; font-weight: bold; }
+    /* 기본 (큰 데스크톱 화면) */
+    .main-metric { 
+        font-size: 2.5rem; 
+        font-weight: bold; 
+    }
     .negative-text { color: #FF4B4B; }
+    /* 새로고침 버튼 기본 스타일 */
+    div[data-testid="stHorizontalBlock"] > div:last-child button {
+        max-width: 200px;
+        float: right;
+    }
+
+    /* --- 태블릿 화면용 규칙 추가 (769px ~ 1024px) --- */ /* <--- 이 부분이 추가됨 */
+    @media (min-width: 769px) and (max-width: 1024px) {
+        .main-metric { 
+            font-size: 2.0rem; /* 태블릿 폰트 크기 */
+        }
+    }
+
+    /* --- 작은 화면용 규칙 (모바일, ~ 768px) --- */
     @media (max-width: 768px) {
-        .main-metric { font-size: 1.8rem; }
-        /* --- 모바일에서 새로고침 버튼 크기 조정 --- */ /* <--- 수정된 부분 */
+        .main-metric { 
+            font-size: 1.8rem; /* 모바일 폰트 크기 */
+        }
+        /* 모바일에서 새로고침 버튼 크기 조정 */
         div[data-testid="stHorizontalBlock"] > div:last-child button {
             max-width: 150px;
         }
