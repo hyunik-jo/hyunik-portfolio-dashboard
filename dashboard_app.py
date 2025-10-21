@@ -13,7 +13,6 @@ try:
     PLOTLY_EVENTS_AVAILABLE = True
 except ImportError:
     PLOTLY_EVENTS_AVAILABLE = False
-    # 임시 함수 정의
     def plotly_events(fig, key=None, click_event=True):
         return []
 
@@ -357,13 +356,12 @@ if not df.empty:
                         y=-0.15,
                         xanchor="center",
                         x=0.5,
-                        font=dict(size=10, family='Arial')
+                        font=dict(size=10)
                     ),
-                    margin=dict(l=10, r=10, t=50, b=80),
-                    font=dict(family='Arial', size=12)
+                    margin=dict(l=10, r=10, t=50, b=80)
                 )
                 
-                # plotly_events 사용 (차트를 자동으로 렌더링함)
+                # plotly_events 사용
                 if PLOTLY_EVENTS_AVAILABLE:
                     selected_points = plotly_events(
                         fig, 
@@ -380,7 +378,6 @@ if not df.empty:
                             point_index = selected_points[0]['pointNumber']
                             selected_market = market_summary.iloc[point_index]['market']
                             
-                            # 이전 선택과 다를 때만 업데이트
                             if st.session_state.get('selected_market') != selected_market:
                                 st.session_state['selected_market'] = selected_market
                                 st.rerun()
@@ -388,244 +385,6 @@ if not df.empty:
                     st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning("주식 데이터가 없습니다.")
-
-# 선택된 market의 종목 구성 표시 (위 차트 섹션 바로 다음에 한 번만 배치)
-if 'selected_market' in st.session_state:
-    st.markdown("---")
-    selected_market = st.session_state['selected_market']
-    market_name = '국내' if selected_market == 'domestic' else '해외'
-    
-    st.subheader(f"📊 {market_name} 종목 구성")
-    
-    # 선택된 market의 주식만 필터링
-    selected_market_stocks = filtered_df[
-        (filtered_df['market'] == selected_market) & 
-        (filtered_df['asset_type'] == 'stock')
-    ].copy()
-    
-    if not selected_market_stocks.empty:
-        # Top 10 종목 선택
-        top_stocks = selected_market_stocks.nlargest(10, 'eval_amount_krw').copy()
-        
-        # 표시용 이름 설정
-        top_stocks['display_name'] = top_stocks['name']
-        
-        # 색상 설정
-        if selected_market == 'domestic':
-            colors = ['#003478', '#0047AB', '#4169E1', '#5B9BD5', '#6FA8DC',
-                     '#93C5FD', '#A8DADC', '#B4D7E8', '#C9E4F7', '#DBEAFE']
-        else:
-            colors = ['#B22234', '#DC143C', '#E63946', '#F08080', '#FA8072',
-                     '#FFB6C1', '#FFC0CB', '#FFD1DC', '#FFE4E1', '#FFF0F5']
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # 파이 차트
-            fig_detail = px.pie(
-                top_stocks, 
-                names='display_name', 
-                values='eval_amount_krw',
-                title=f'{market_name} Top 10 종목',
-                hole=0.35,
-                color_discrete_sequence=colors
-            )
-            fig_detail.update_traces(
-                textposition='inside',
-                texttemplate='<b>%{label}</b><br>%{percent}',
-                textfont=dict(size=11, family='Arial')
-            )
-            fig_detail.update_layout(
-                height=400,
-                showlegend=True,
-                legend=dict(
-                    orientation="v",
-                    yanchor="middle",
-                    y=0.5,
-                    xanchor="left",
-                    x=1.05,
-                    font=dict(size=9, family='Arial')
-                ),
-                font=dict(family='Arial')
-            )
-            st.plotly_chart(fig_detail, use_container_width=True)
-        
-        with col2:
-            # 바 차트
-            fig_bar = px.bar(
-                top_stocks.sort_values('eval_amount_krw', ascending=True),
-                y='display_name',
-                x='eval_amount_krw',
-                orientation='h',
-                title=f'{market_name} Top 10 평가금액',
-                color='eval_amount_krw',
-                color_continuous_scale=['#FFE4E1', '#B22234'] if selected_market == 'overseas' else ['#DBEAFE', '#003478']
-            )
-            fig_bar.update_layout(
-                height=400,
-                showlegend=False,
-                xaxis_title="평가금액 (원)",
-                yaxis_title="",
-                coloraxis_showscale=False,
-                font=dict(family='Arial')
-            )
-            fig_bar.update_traces(
-                text=top_stocks.sort_values('eval_amount_krw', ascending=True)['eval_amount_krw'].apply(lambda x: f'₩{x:,.0f}'),
-                textposition='outside'
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
-        
-        # 상세 테이블
-        st.markdown("#### 📋 상세 내역")
-        detail_table = selected_market_stocks.copy()
-        detail_table = detail_table.sort_values('eval_amount_krw', ascending=False)
-        
-        detail_table['종목명'] = detail_table['name']
-        detail_table['티커'] = detail_table['ticker']
-        detail_table['평가금액'] = detail_table['eval_amount_krw'].apply(lambda x: f"₩{x:,.0f}")
-        detail_table['비중(%)'] = (detail_table['eval_amount_krw'] / detail_table['eval_amount_krw'].sum() * 100).apply(lambda x: f"{x:.2f}%")
-        detail_table['수익률(%)'] = detail_table.apply(
-            lambda row: f"{(row['profit_loss_krw'] / (row['eval_amount_krw'] - row['profit_loss_krw']) * 100):+.2f}%" 
-            if (row['eval_amount_krw'] - row['profit_loss_krw']) > 0 else "0.00%",
-            axis=1
-        )
-        
-        st.dataframe(
-            detail_table[['종목명', '티커', '평가금액', '비중(%)', '수익률(%)']],
-            hide_index=True,
-            use_container_width=True
-        )
-        
-        # 선택 해제 버튼
-        if st.button("🔙 전체 보기로 돌아가기"):
-            del st.session_state['selected_market']
-            st.rerun()
-    else:
-        st.info(f"{market_name}에 보유 중인 주식이 없습니다.")
-
-st.markdown("---")
-st.subheader("📋 계좌별 상세 보유 현황")
-
-# 선택된 market의 종목 구성 표시
-if 'selected_market' in st.session_state:
-    st.markdown("---")
-    selected_market = st.session_state['selected_market']
-    market_name = '국내' if selected_market == 'domestic' else '해외'
-    
-    st.subheader(f"📊 {market_name} 종목 구성")
-    
-    # 선택된 market의 주식만 필터링
-    selected_market_stocks = filtered_df[
-        (filtered_df['market'] == selected_market) & 
-        (filtered_df['asset_type'] == 'stock')
-    ].copy()
-    
-    if not selected_market_stocks.empty:
-        # Top 10 종목 선택
-        top_stocks = selected_market_stocks.nlargest(10, 'eval_amount_krw').copy()
-        
-        # 표시용 이름 설정
-        top_stocks['display_name'] = top_stocks.apply(
-            lambda row: row['name'] if selected_market == 'domestic' else f"{row['name']}", 
-            axis=1
-        )
-        
-        # 색상 설정
-        if selected_market == 'domestic':
-            colors = ['#003478', '#0047AB', '#4169E1', '#5B9BD5', '#6FA8DC',
-                     '#93C5FD', '#A8DADC', '#B4D7E8', '#C9E4F7', '#DBEAFE']
-        else:
-            colors = ['#B22234', '#DC143C', '#E63946', '#F08080', '#FA8072',
-                     '#FFB6C1', '#FFC0CB', '#FFD1DC', '#FFE4E1', '#FFF0F5']
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # 파이 차트
-            fig_detail = px.pie(
-                top_stocks, 
-                names='display_name', 
-                values='eval_amount_krw',
-                title=f'{market_name} Top 10 종목',
-                hole=0.35,
-                color_discrete_sequence=colors
-            )
-            fig_detail.update_traces(
-                textposition='inside',
-                texttemplate='<b>%{label}</b><br>%{percent}',
-                textfont=dict(size=11, family='Arial')
-            )
-            fig_detail.update_layout(
-                height=400,
-                showlegend=True,
-                legend=dict(
-                    orientation="v",
-                    yanchor="middle",
-                    y=0.5,
-                    xanchor="left",
-                    x=1.05,
-                    font=dict(size=9)
-                ),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                font=dict(family='Arial')
-            )
-            st.plotly_chart(fig_detail, use_container_width=True)
-        
-        with col2:
-            # 바 차트
-            fig_bar = px.bar(
-                top_stocks.sort_values('eval_amount_krw', ascending=True),
-                y='display_name',
-                x='eval_amount_krw',
-                orientation='h',
-                title=f'{market_name} Top 10 평가금액',
-                color='eval_amount_krw',
-                color_continuous_scale=['#FFE4E1', '#B22234'] if selected_market == 'overseas' else ['#DBEAFE', '#003478']
-            )
-            fig_bar.update_layout(
-                height=400,
-                showlegend=False,
-                xaxis_title="평가금액 (원)",
-                yaxis_title="",
-                coloraxis_showscale=False,
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                font=dict(family='Arial')
-            )
-            fig_bar.update_traces(
-                text=top_stocks.sort_values('eval_amount_krw', ascending=True)['eval_amount_krw'].apply(lambda x: f'₩{x:,.0f}'),
-                textposition='outside'
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
-        
-        # 상세 테이블
-        st.markdown("#### 📋 상세 내역")
-        detail_table = selected_market_stocks.copy()
-        detail_table = detail_table.sort_values('eval_amount_krw', ascending=False)
-        
-        detail_table['종목명'] = detail_table['name']
-        detail_table['티커'] = detail_table['ticker']
-        detail_table['평가금액'] = detail_table['eval_amount_krw'].apply(lambda x: f"₩{x:,.0f}")
-        detail_table['비중(%)'] = (detail_table['eval_amount_krw'] / detail_table['eval_amount_krw'].sum() * 100).apply(lambda x: f"{x:.2f}%")
-        detail_table['수익률(%)'] = detail_table.apply(
-            lambda row: f"{(row['profit_loss_krw'] / (row['eval_amount_krw'] - row['profit_loss_krw']) * 100):+.2f}%" 
-            if (row['eval_amount_krw'] - row['profit_loss_krw']) > 0 else "0.00%",
-            axis=1
-        )
-        
-        st.dataframe(
-            detail_table[['종목명', '티커', '평가금액', '비중(%)', '수익률(%)']],
-            hide_index=True,
-            use_container_width=True
-        )
-        
-        # 선택 해제 버튼
-        if st.button("🔙 전체 보기로 돌아가기"):
-            del st.session_state['selected_market']
-            st.rerun()
-    else:
-        st.info(f"{market_name}에 보유 중인 주식이 없습니다.")
 
         # 선택된 market의 종목 구성 표시
         if 'selected_market' in st.session_state:
@@ -646,18 +405,15 @@ if 'selected_market' in st.session_state:
                 top_stocks = selected_market_stocks.nlargest(10, 'eval_amount_krw').copy()
                 
                 # 표시용 이름 설정
-                top_stocks['display_name'] = top_stocks.apply(
-                    lambda row: row['name'] if selected_market == 'domestic' else f"{row['name']} ({row['ticker']})", 
-                    axis=1
-                )
+                top_stocks['display_name'] = top_stocks['name']
                 
                 # 색상 설정
                 if selected_market == 'domestic':
                     colors = ['#003478', '#0047AB', '#4169E1', '#5B9BD5', '#6FA8DC',
-                            '#93C5FD', '#A8DADC', '#B4D7E8', '#C9E4F7', '#DBEAFE']
+                             '#93C5FD', '#A8DADC', '#B4D7E8', '#C9E4F7', '#DBEAFE']
                 else:
                     colors = ['#B22234', '#DC143C', '#E63946', '#F08080', '#FA8072',
-                            '#FFB6C1', '#FFC0CB', '#FFD1DC', '#FFE4E1', '#FFF0F5']
+                             '#FFB6C1', '#FFC0CB', '#FFD1DC', '#FFE4E1', '#FFF0F5']
                 
                 col1, col2 = st.columns(2)
                 
@@ -673,128 +429,8 @@ if 'selected_market' in st.session_state:
                     )
                     fig_detail.update_traces(
                         textposition='inside',
-                        texttemplate='%{label}<br>%{percent}',
-                        textfont=dict(size=11)
-                    )
-                    fig_detail.update_layout(
-                        height=400,
-                        showlegend=True,
-                        legend=dict(
-                            orientation="v",
-                            yanchor="middle",
-                            y=0.5,
-                            xanchor="left",
-                            x=1.05,
-                            font=dict(size=9)
-                        ),
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)'
-                    )
-                    st.plotly_chart(fig_detail, use_container_width=True)
-                
-                with col2:
-                    # 바 차트
-                    fig_bar = px.bar(
-                        top_stocks.sort_values('eval_amount_krw', ascending=True),
-                        y='display_name',
-                        x='eval_amount_krw',
-                        orientation='h',
-                        title=f'{market_name} Top 10 평가금액',
-                        color='eval_amount_krw',
-                        color_continuous_scale=['#FFE4E1', '#B22234'] if selected_market == 'overseas' else ['#DBEAFE', '#003478']
-                    )
-                    fig_bar.update_layout(
-                        height=400,
-                        showlegend=False,
-                        xaxis_title="평가금액 (원)",
-                        yaxis_title="",
-                        coloraxis_showscale=False,
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)'
-                    )
-                    fig_bar.update_traces(
-                        text=top_stocks.sort_values('eval_amount_krw', ascending=True)['eval_amount_krw'].apply(lambda x: f'₩{x:,.0f}'),
-                        textposition='outside'
-                    )
-                    st.plotly_chart(fig_bar, use_container_width=True)
-                
-                # 상세 테이블
-                st.markdown("#### 📋 상세 내역")
-                detail_table = selected_market_stocks.copy()
-                detail_table = detail_table.sort_values('eval_amount_krw', ascending=False)
-                
-                detail_table['종목명'] = detail_table['name']
-                detail_table['티커'] = detail_table['ticker']
-                detail_table['평가금액'] = detail_table['eval_amount_krw'].apply(lambda x: f"₩{x:,.0f}")
-                detail_table['비중(%)'] = (detail_table['eval_amount_krw'] / detail_table['eval_amount_krw'].sum() * 100).apply(lambda x: f"{x:.2f}%")
-                detail_table['수익률(%)'] = detail_table.apply(
-                    lambda row: f"{(row['profit_loss_krw'] / (row['eval_amount_krw'] - row['profit_loss_krw']) * 100):+.2f}%" 
-                    if (row['eval_amount_krw'] - row['profit_loss_krw']) > 0 else "0.00%",
-                    axis=1
-                )
-                
-                st.dataframe(
-                    detail_table[['종목명', '티커', '평가금액', '비중(%)', '수익률(%)']],
-                    hide_index=True,
-                    use_container_width=True
-                )
-                
-                # 선택 해제 버튼
-                if st.button("🔙 전체 보기로 돌아가기"):
-                    del st.session_state['selected_market']
-                    st.rerun()
-            else:
-                st.info(f"{market_name}에 보유 중인 주식이 없습니다.")
-
-
-        # 선택된 market의 종목 구성 표시
-        if 'selected_market' in st.session_state:
-            st.markdown("---")
-            selected_market = st.session_state['selected_market']
-            market_name = '🇰🇷 국내' if selected_market == 'domestic' else '🌍 해외'
-            
-            st.subheader(f"📊 {market_name} 종목 구성")
-            
-            # 선택된 market의 주식만 필터링
-            selected_market_stocks = filtered_df[
-                (filtered_df['market'] == selected_market) & 
-                (filtered_df['asset_type'] == 'stock')
-            ].copy()
-            
-            if not selected_market_stocks.empty:
-                # Top 10 종목 선택
-                top_stocks = selected_market_stocks.nlargest(10, 'eval_amount_krw').copy()
-                
-                # 표시용 이름 설정
-                top_stocks['display_name'] = top_stocks.apply(
-                    lambda row: row['name'] if selected_market == 'domestic' else f"{row['name']} ({row['ticker']})", 
-                    axis=1
-                )
-                
-                # 색상 설정
-                if selected_market == 'domestic':
-                    colors = ['#003478', '#0047AB', '#4169E1', '#5B9BD5', '#6FA8DC',
-                            '#93C5FD', '#A8DADC', '#B4D7E8', '#C9E4F7', '#DBEAFE']
-                else:
-                    colors = ['#B22234', '#DC143C', '#E63946', '#F08080', '#FA8072',
-                            '#FFB6C1', '#FFC0CB', '#FFD1DC', '#FFE4E1', '#FFF0F5']
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    # 파이 차트
-                    fig_detail = px.pie(
-                        top_stocks, 
-                        names='display_name', 
-                        values='eval_amount_krw',
-                        title=f'{market_name} Top 10 종목',
-                        hole=0.35,
-                        color_discrete_sequence=colors
-                    )
-                    fig_detail.update_traces(
-                        textposition='inside',
-                        texttemplate='%{label}<br>%{percent}',
-                        textfont=dict(size=11)
+                        texttemplate='<b>%{label}</b><br>%{percent}',
+                        textfont=dict(size=11, family='Arial')
                     )
                     fig_detail.update_layout(
                         height=400,
@@ -861,6 +497,7 @@ if 'selected_market' in st.session_state:
                     st.rerun()
             else:
                 st.info(f"{market_name}에 보유 중인 주식이 없습니다.")
+
         st.markdown("---")
         st.subheader("📋 계좌별 상세 보유 현황")
         
@@ -879,217 +516,4 @@ if 'selected_market' in st.session_state:
                 rate_display = f"{account_pl_rate:+.1f}%"
                 
                 if account_pl < 0:
-                    expander_title = f"**{account_label}** | 평가: ₩{account_eval:,.0f} | 손익: :red[{pl_display}] (:red[{rate_display}])"
-                else:
-                    expander_title = f"**{account_label}** | 평가: ₩{account_eval:,.0f} | 손익: {pl_display} ({rate_display})"
-                
-                with st.expander(expander_title, expanded=False):
-                    display_stocks = account_stocks[['name', 'ticker', 'quantity', 'avg_buy_price', 
-                                                     'current_price', 'principal_krw', 'eval_amount_krw', 
-                                                     'profit_loss_krw']].copy()
-                    
-                    display_stocks['weight'] = (display_stocks['eval_amount_krw'] / account_eval * 100).round(1)
-                    display_stocks['profit_rate'] = (
-                        (display_stocks['profit_loss_krw'] / display_stocks['principal_krw'] * 100)
-                        .fillna(0).round(1)
-                    )
-                    
-                    display_stocks['종목명'] = display_stocks['name']
-                    display_stocks['티커'] = display_stocks['ticker']
-                    display_stocks['수량'] = display_stocks['quantity'].apply(lambda x: f"{int(x):,}")
-                    display_stocks['평단가'] = display_stocks['avg_buy_price'].apply(lambda x: f"{x:,.2f}")
-                    display_stocks['현재가'] = display_stocks['current_price'].apply(lambda x: f"{x:,.2f}")
-                    display_stocks['투자원금'] = display_stocks['principal_krw'].apply(lambda x: f"₩{x:,.0f}")
-                    display_stocks['평가금액'] = display_stocks['eval_amount_krw'].apply(lambda x: f"₩{x:,.0f}")
-                    display_stocks['손익'] = display_stocks['profit_loss_krw'].apply(
-                        lambda x: f"+₩{x:,.0f}" if x >= 0 else f"-₩{abs(x):,.0f}"
-                    )
-                    display_stocks['수익률(%)'] = display_stocks['profit_rate'].apply(lambda x: f"{x:+.1f}%")
-                    display_stocks['비중(%)'] = display_stocks['weight'].apply(lambda x: f"{x:.1f}%")
-                    
-                    total_principal_sum = display_stocks['principal_krw'].sum()
-                    total_eval_sum = display_stocks['eval_amount_krw'].sum()
-                    total_pl_sum = display_stocks['profit_loss_krw'].sum()
-                    
-                    total_row = pd.DataFrame([{
-                        '종목명': '**합계**',
-                        '티커': '',
-                        '수량': '',
-                        '평단가': '',
-                        '현재가': '',
-                        '투자원금': f"₩{total_principal_sum:,.0f}",
-                        '평가금액': f"₩{total_eval_sum:,.0f}",
-                        '손익': f"+₩{total_pl_sum:,.0f}" if total_pl_sum >= 0 else f"-₩{abs(total_pl_sum):,.0f}",
-                        '수익률(%)': f"{account_pl_rate:+.1f}%",
-                        '비중(%)': '100.0%'
-                    }])
-                    
-                    display_with_total = pd.concat([
-                        display_stocks[['종목명', '티커', '수량', '평단가', '현재가', 
-                                       '투자원금', '평가금액', '손익', '수익률(%)', '비중(%)']],
-                        total_row
-                    ], ignore_index=True)
-                    
-                    def highlight_negative(val):
-                        if isinstance(val, str):
-                            if '-₩' in val or (val.startswith('-') and '%' in val):
-                                return 'color: #FF4B4B'
-                        return ''
-                    
-                    styled_df = display_with_total.style.map(highlight_negative, subset=['손익', '수익률(%)'])
-                    
-                    st.dataframe(
-                        styled_df,
-                        hide_index=True,
-                        use_container_width=True
-                    )
-        
-        st.markdown("---")
-        st.subheader("📈 전체 종목 요약")
-        
-        if not stock_only.empty:
-            stock_summary = stock_only.groupby(['ticker', 'name', 'currency']).agg({
-                'eval_amount_krw': 'sum',
-                'principal_krw': 'sum',
-                'quantity': 'sum'
-            }).reset_index()
-            
-            stock_summary['profit_loss_krw'] = stock_summary['eval_amount_krw'] - stock_summary['principal_krw']
-            stock_summary['profit_rate'] = (
-                (stock_summary['profit_loss_krw'] / stock_summary['principal_krw'] * 100)
-                .fillna(0).round(1)
-            )
-            stock_summary['weight'] = (stock_summary['eval_amount_krw'] / stock_summary['eval_amount_krw'].sum() * 100).round(1)
-            
-            stock_summary = stock_summary.sort_values('eval_amount_krw', ascending=False).reset_index(drop=True)
-            
-            display_summary = stock_summary.copy()
-            display_summary['종목명'] = display_summary['name']
-            display_summary['티커'] = display_summary['ticker']
-            display_summary['통화'] = display_summary['currency']
-            display_summary['수량'] = display_summary['quantity'].apply(lambda x: f"{int(x):,}")
-            display_summary['투자원금'] = display_summary['principal_krw'].apply(lambda x: f"₩{x:,.0f}")
-            display_summary['평가금액'] = display_summary['eval_amount_krw'].apply(lambda x: f"₩{x:,.0f}")
-            display_summary['손익'] = display_summary['profit_loss_krw'].apply(
-                lambda x: f"+₩{x:,.0f}" if x >= 0 else f"-₩{abs(x):,.0f}"
-            )
-            display_summary['수익률(%)'] = display_summary['profit_rate'].apply(lambda x: f"{x:+.1f}%")
-            display_summary['비중(%)'] = display_summary['weight'].apply(lambda x: f"{x:.1f}%")
-            
-            total_stock_principal = stock_summary['principal_krw'].sum()
-            total_stock_eval = stock_summary['eval_amount_krw'].sum()
-            total_stock_pl = total_stock_eval - total_stock_principal
-            total_stock_rate = (total_stock_pl / total_stock_principal * 100) if total_stock_principal > 0 else 0
-            
-            total_row_summary = pd.DataFrame([{
-                '종목명': '**합계**',
-                '티커': '',
-                '통화': '',
-                '수량': f"{int(stock_summary['quantity'].sum()):,}",
-                '투자원금': f"₩{total_stock_principal:,.0f}",
-                '평가금액': f"₩{total_stock_eval:,.0f}",
-                '손익': f"+₩{total_stock_pl:,.0f}" if total_stock_pl >= 0 else f"-₩{abs(total_stock_pl):,.0f}",
-                '수익률(%)': f"{total_stock_rate:+.1f}%",
-                '비중(%)': '100.0%'
-            }])
-            
-            display_summary_with_total = pd.concat([
-                display_summary[['종목명', '티커', '통화', '수량', '투자원금', '평가금액', '손익', '수익률(%)', '비중(%)']],
-                total_row_summary
-            ], ignore_index=True)
-            
-            def highlight_negative(val):
-                if isinstance(val, str):
-                    if '-₩' in val or (val.startswith('-') and '%' in val):
-                        return 'color: #FF4B4B'
-                return ''
-            
-            styled_summary = display_summary_with_total.style.map(highlight_negative, subset=['손익', '수익률(%)'])
-            
-            st.dataframe(
-                styled_summary,
-                hide_index=True,
-                use_container_width=True
-            )
-            
-            csv = display_summary.to_csv(index=False).encode('utf-8-sig')
-            st.download_button(
-                label="📥 CSV 다운로드",
-                data=csv,
-                file_name=f"portfolio_summary_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
-            )
-        
-        st.markdown("---")
-        st.subheader("💰 예수금 현황")
-        
-        cash_df = filtered_df[filtered_df['asset_type'] == 'cash'].copy()
-        if not cash_df.empty:
-            account_cash_summary = cash_df.groupby('account_label')['eval_amount_krw'].sum().reset_index()
-            account_cash_summary = account_cash_summary.sort_values('eval_amount_krw', ascending=False)
-            
-            for _, row in account_cash_summary.iterrows():
-                account = row['account_label']
-                account_total_krw = row['eval_amount_krw']
-                
-                account_cash_detail = cash_df[cash_df['account_label'] == account].copy()
-                
-                with st.expander(f"**{account}** | 총 예수금: ₩{account_total_krw:,.0f}", expanded=False):
-                    detail_display = account_cash_detail[['currency', 'eval_amount', 'eval_amount_krw']].copy()
-                    detail_display['통화'] = detail_display['currency']
-                    detail_display['보유액'] = detail_display.apply(
-                        lambda r: f"{r['currency']} {r['eval_amount']:,.2f}", axis=1
-                    )
-                    detail_display['원화환산'] = detail_display['eval_amount_krw'].apply(lambda x: f"₩{x:,.0f}")
-                    
-                    st.dataframe(
-                        detail_display[['통화', '보유액', '원화환산']],
-                        hide_index=True,
-                        use_container_width=True
-                    )
-
-    with tab2:
-        st.subheader("📈 투자 성과 분석")
-        st.info("🚧 준비 중입니다. 곧 벤치마크 대비 수익률 분석 기능이 추가됩니다.")
-        
-        st.markdown("""
-        ### 📋 구현 예정 기능
-        
-        1. **수익률 비교**
-           - 내 포트폴리오 vs KOSPI
-           - 내 포트폴리오 vs NASDAQ
-           - 내 포트폴리오 vs S&P 500
-        
-        2. **기간별 성과**
-           - 1개월, 3개월, 6개월, 1년, 전체
-           - 월별/분기별 수익률 추이
-        
-        3. **리스크 지표**
-           - 변동성 (표준편차)
-           - 샤프 비율
-           - 최대 낙폭 (MDD)
-        
-        4. **거래 내역 분석**
-           - 입출금 내역 제외
-           - 순수 투자 수익률 계산
-           - 매매 손익 분석
-        """)
-        
-        st.markdown("---")
-        st.subheader("현재 포트폴리오 기본 통계")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        total_eval = df['eval_amount_krw'].sum()
-        total_principal = df['principal_krw'].sum()
-        total_return = ((total_eval - total_principal) / total_principal * 100) if total_principal > 0 else 0
-        stock_count = len(df[df['asset_type'] == 'stock'])
-        
-        col1.metric("보유 종목 수", f"{stock_count}개")
-        col2.metric("총 투자 원금", f"₩{total_principal:,.0f}")
-        col3.metric("총 평가 금액", f"₩{total_eval:,.0f}")
-        col4.metric("누적 수익률", f"{total_return:+.2f}%")
-
-else:
-    st.header("⚠️ 데이터를 로드하는 데 실패했습니다.")
-    st.info("API 연결을 확인하거나 잠시 후 다시 시도해주세요.")
+                    expander_title = f"**{account_label}** | 평가: ₩{account_eval:,.0f} | 손익: :red[{pl_display
