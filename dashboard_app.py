@@ -348,8 +348,8 @@ if not df.empty:
                     paper_bgcolor='rgba(0,0,0,0)'
                 )
                 
-                fig.update_xaxis(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.2)')
-                fig.update_yaxis(showgrid=False)
+                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.2)')
+                fig.update_yaxes(showgrid=False)
                 
                 st.plotly_chart(fig, use_container_width=True)
 
