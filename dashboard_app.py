@@ -498,10 +498,7 @@ if not df.empty:
                 pl_display = f"+₩{account_pl:,.0f}" if account_pl >= 0 else f"-₩{abs(account_pl):,.0f}"
                 rate_display = f"{account_pl_rate:+.1f}%"
                 
-                if account_pl < 0:
-                    expander_title = f"**{account_label}** | 평가: ₩{account_eval:,.0f} | 손익: :red[{pl_display}] (:red[{rate_display}])"
-                else:
-                    expander_title = f"**{account_label}** | 평가: ₩{account_eval:,.0f} | 손익: {pl_display} ({rate_display})"
+                expander_title = f"**{account_label}** | 평가: ₩{account_eval:,.0f} | 손익: {pl_display} ({rate_display})"
                 
                 with st.expander(expander_title, expanded=False):
                     display_stocks = account_stocks[['name', 'ticker', 'quantity', 'avg_buy_price', 
