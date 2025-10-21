@@ -205,21 +205,13 @@ if not df.empty:
 
         col1, col2, col3, col4, col5 = st.columns(5)
         
-        def format_amount(amount):
-            if amount >= 1_000_000_000:
-                return f"₩{amount/1_000_000_000:.1f}B"
-            elif amount >= 100_000_000:
-                return f"₩{amount/100_000_000:.0f}억"
-            else:
-                return f"₩{amount:,.0f}"
-        
-        col1.metric("총 평가액", format_amount(total_eval_krw))
-        col2.metric("투자 원금", format_amount(total_principal_krw))
+        col1.metric("총 평가액", f"₩{total_eval_krw:,.0f}")
+        col2.metric("투자 원금", f"₩{total_principal_krw:,.0f}")
         
         pl_color = "normal" if total_pl_krw >= 0 else "inverse"
-        col3.metric("총 손익", format_amount(total_pl_krw), delta=f"{total_return_rate:+.1f}%", delta_color=pl_color)
+        col3.metric("총 손익", f"₩{total_pl_krw:,.0f}", delta=f"{total_return_rate:+.1f}%", delta_color=pl_color)
         col4.metric("수익률", f"{total_return_rate:+.1f}%")
-        col5.metric("예수금", format_amount(total_cash_krw))
+        col5.metric("예수금", f"₩{total_cash_krw:,.0f}")
 
         st.subheader("🎯 포트폴리오 구성")
         
