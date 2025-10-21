@@ -24,7 +24,7 @@ except ImportError:
     st.error("`currency_api.py` 파일을 찾을 수 없습니다.")
     st.stop()
 
-# 비밀번호 확인 함수
+
 def check_password():
     """AWS Parameter Store에서 비밀번호를 가져와 인증"""
     
@@ -89,6 +89,7 @@ def check_password():
     
     return False
 
+
 if not check_password():
     st.stop()
 
@@ -135,6 +136,7 @@ st.markdown("""
 
 DIR_PATH = Path(__file__).resolve().parent
 
+
 @st.cache_data(ttl=timedelta(minutes=5))
 def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
     import os
@@ -170,6 +172,7 @@ def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
     df.loc[df['asset_type'] == 'cash', 'principal_krw'] = df['eval_amount_krw']
     
     return df, exchange_rates_to_krw, last_update_time, last_updated
+
 
 st.title("💼 통합 포트폴리오 대시보드")
 
@@ -351,9 +354,11 @@ if not df.empty:
                         y=-0.15,
                         xanchor="center",
                         x=0.5,
-                        font=dict(size=10)
+                        font=dict(size=10, family='Arial')
                     ),
-                    margin=dict(l=10, r=10, t=50, b=80)
+                    margin=dict(l=10, r=10, t=50, b=80),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
                 )
                 
                 if PLOTLY_EVENTS_AVAILABLE:
@@ -379,6 +384,7 @@ if not df.empty:
             else:
                 st.warning("주식 데이터가 없습니다.")
 
+        # 선택된 market의 종목 구성 표시
         if 'selected_market' in st.session_state:
             st.markdown("---")
             selected_market = st.session_state['selected_market']
@@ -395,14 +401,30 @@ if not df.empty:
                 top_stocks = selected_market_stocks.nlargest(10, 'eval_amount_krw').copy()
                 top_stocks['display_name'] = top_stocks['name']
                 
+                # 파이 차트 색상
                 if selected_market == 'domestic':
-                    colors = ['#003478', '#0047AB', '#4169E1', '#5B9BD5', '#6FA8DC',
-                             '#93C5FD', '#A8DADC', '#B4D7E8', '#C9E4F7', '#DBEAFE']
+                    pie_colors = ['#003478', '#0047AB', '#4169E1', '#5B9BD5', '#6FA8DC',
+                                 '#93C5FD', '#A8DADC', '#B4D7E8', '#C9E4F7', '#DBEAFE']
                 else:
-                    colors = ['#B22234', '#DC143C', '#E63946', '#F08080', '#FA8072',
-                             '#FFB6C1', '#FFC0CB', '#FFD1DC', '#FFE4E1', '#FFF0F5']
+                    pie_colors = ['#B22234', '#DC143C', '#E63946', '#F08080', '#FA8072',
+                                 '#FFB6C1', '#FFC0CB', '#FFD1DC', '#FFE4E1', '#FFF0F5']
                 
-                col1, col2 = st.columns(2)
+                # 계좌별 색상 매핑
+                account_color_map = {}
+                for account in filtered_df['account_label'].unique():
+                    if '조현익' in account:
+                        account_color_map[account] = '#c7b273'
+                    elif '뮤사이' in account:
+                        if '키움' in account:
+                            account_color_map[account] = '#BFBFBF'
+                        elif '한투' in account:
+                            account_color_map[account] = '#E5E5E5'
+                        else:
+                            account_color_map[account] = '#D3D3D3'
+                    else:
+                        account_color_map[account] = '#1f77b4'
+                
+                col1, col2 = st.columns([1, 1])
                 
                 with col1:
                     fig_detail = px.pie(
@@ -411,15 +433,15 @@ if not df.empty:
                         values='eval_amount_krw',
                         title=f'{market_name} Top 10 종목',
                         hole=0.35,
-                        color_discrete_sequence=colors
+                        color_discrete_sequence=pie_colors
                     )
                     fig_detail.update_traces(
                         textposition='inside',
                         texttemplate='<b>%{label}</b><br>%{percent}',
-                        textfont=dict(size=11, family='Arial')
+                        textfont=dict(size=12, family='Arial')
                     )
                     fig_detail.update_layout(
-                        height=400,
+                        height=500,
                         showlegend=True,
                         legend=dict(
                             orientation="v",
@@ -427,32 +449,57 @@ if not df.empty:
                             y=0.5,
                             xanchor="left",
                             x=1.05,
-                            font=dict(size=9)
+                            font=dict(size=10, family='Arial')
                         )
                     )
                     st.plotly_chart(fig_detail, use_container_width=True)
                 
                 with col2:
-                    fig_bar = px.bar(
-                        top_stocks.sort_values('eval_amount_krw', ascending=True),
-                        y='display_name',
-                        x='eval_amount_krw',
-                        orientation='h',
-                        title=f'{market_name} Top 10 평가금액',
-                        color='eval_amount_krw',
-                        color_continuous_scale=['#FFE4E1', '#B22234'] if selected_market == 'overseas' else ['#DBEAFE', '#003478']
-                    )
+                    fig_bar = go.Figure()
+                    
+                    for idx, row in top_stocks.sort_values('eval_amount_krw', ascending=True).iterrows():
+                        stock_name = row['display_name']
+                        stock_detail = selected_market_stocks[
+                            selected_market_stocks['name'] == row['name']
+                        ]
+                        
+                        for _, detail_row in stock_detail.iterrows():
+                            account = detail_row['account_label']
+                            amount = detail_row['eval_amount_krw']
+                            
+                            fig_bar.add_trace(go.Bar(
+                                y=[stock_name],
+                                x=[amount],
+                                name=account,
+                                orientation='h',
+                                marker=dict(color=account_color_map.get(account, '#1f77b4')),
+                                text=f'₩{amount:,.0f}',
+                                textposition='inside',
+                                textfont=dict(size=10),
+                                hovertemplate=f'<b>{account}</b><br>₩{amount:,.0f}<extra></extra>',
+                                showlegend=True if idx == top_stocks.index[0] else False,
+                                legendgroup=account
+                            ))
+                    
                     fig_bar.update_layout(
-                        height=400,
-                        showlegend=False,
+                        title=f'{market_name} Top 10 평가금액 (계좌별)',
+                        height=500,
+                        barmode='stack',
                         xaxis_title="평가금액 (원)",
                         yaxis_title="",
-                        coloraxis_showscale=False
+                        showlegend=True,
+                        legend=dict(
+                            title="계좌",
+                            orientation="v",
+                            yanchor="top",
+                            y=1,
+                            xanchor="left",
+                            x=1.05,
+                            font=dict(size=9, family='Arial')
+                        ),
+                        margin=dict(l=10, r=150, t=50, b=50)
                     )
-                    fig_bar.update_traces(
-                        text=top_stocks.sort_values('eval_amount_krw', ascending=True)['eval_amount_krw'].apply(lambda x: f'₩{x:,.0f}'),
-                        textposition='outside'
-                    )
+                    
                     st.plotly_chart(fig_bar, use_container_width=True)
                 
                 st.markdown("#### 📋 상세 내역")
@@ -461,6 +508,7 @@ if not df.empty:
                 
                 detail_table['종목명'] = detail_table['name']
                 detail_table['티커'] = detail_table['ticker']
+                detail_table['계좌'] = detail_table['account_label']
                 detail_table['평가금액'] = detail_table['eval_amount_krw'].apply(lambda x: f"₩{x:,.0f}")
                 detail_table['비중(%)'] = (detail_table['eval_amount_krw'] / detail_table['eval_amount_krw'].sum() * 100).apply(lambda x: f"{x:.2f}%")
                 detail_table['수익률(%)'] = detail_table.apply(
@@ -470,7 +518,7 @@ if not df.empty:
                 )
                 
                 st.dataframe(
-                    detail_table[['종목명', '티커', '평가금액', '비중(%)', '수익률(%)']],
+                    detail_table[['종목명', '티커', '계좌', '평가금액', '비중(%)', '수익률(%)']],
                     hide_index=True,
                     use_container_width=True
                 )
