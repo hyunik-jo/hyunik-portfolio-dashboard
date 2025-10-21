@@ -6,7 +6,16 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta, timezone
 from stock import collect_all_assets
 import boto3
-from streamlit_plotly_events import plotly_events
+
+# streamlit-plotly-events 라이브러리를 optional로 임포트
+try:
+    from streamlit_plotly_events import plotly_events
+    PLOTLY_EVENTS_AVAILABLE = True
+except ImportError:
+    PLOTLY_EVENTS_AVAILABLE = False
+    # 임시 함수 정의
+    def plotly_events(fig, key=None, click_event=True):
+        return []
 
 KST = timezone(timedelta(hours=9))
 
@@ -411,22 +420,27 @@ if not df.empty:
                             margin=dict(l=10, r=10, t=50, b=80)
                         )
                         
-                        # plotly_events로 클릭 이벤트 처리
-                        selected_points = plotly_events(fig, key="market_distribution_chart", click_event=True)
-                        
-                        if selected_points:
-                            point = selected_points[0]
-                            # 클릭된 포인트의 정보 가져오기
-                            point_index = point.get('pointIndex', 0)
-                            if point_index is not None:
-                                market_names = market_summary['market_name'].tolist()
-                                if point_index < len(market_names):
-                                    selected_market_name = market_names[point_index]
-                                    # market_name을 market 키로 매핑
-                                    market_mapping = {'국내주식': 'domestic', '해외주식': 'overseas'}
-                                    if selected_market_name in market_mapping:
-                                        st.session_state['selected_market'] = market_mapping[selected_market_name]
-                                        st.rerun()
+                        # plotly_events로 클릭 이벤트 처리 (라이브러리가 있을 때만)
+                        if PLOTLY_EVENTS_AVAILABLE:
+                            selected_points = plotly_events(fig, key="market_distribution_chart", click_event=True)
+                            
+                            if selected_points:
+                                point = selected_points[0]
+                                # 클릭된 포인트의 정보 가져오기
+                                point_index = point.get('pointIndex', 0)
+                                if point_index is not None:
+                                    market_names = market_summary['market_name'].tolist()
+                                    if point_index < len(market_names):
+                                        selected_market_name = market_names[point_index]
+                                        # market_name을 market 키로 매핑
+                                        market_mapping = {'국내주식': 'domestic', '해외주식': 'overseas'}
+                                        if selected_market_name in market_mapping:
+                                            st.session_state['selected_market'] = market_mapping[selected_market_name]
+                                            st.rerun()
+                        else:
+                            # 라이브러리가 없을 때는 일반 차트만 표시하고 사용자에게 안내 메시지 표시
+                            st.info("💡 차트 클릭 기능을 사용하려면 `streamlit-plotly-events` 라이브러리가 필요합니다.")
+                            st.plotly_chart(fig, use_container_width=True)
 
         st.markdown("---")
         st.subheader("📋 계좌별 상세 보유 현황")
