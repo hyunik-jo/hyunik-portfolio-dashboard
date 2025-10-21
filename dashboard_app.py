@@ -106,7 +106,7 @@ st.markdown("""
     /* --- 태블릿 화면용 규칙 추가 (769px ~ 1024px) --- */ /* <--- 이 부분이 추가됨 */
     @media (min-width: 769px) and (max-width: 1024px) {
         .main-metric { 
-            font-size: 2.0rem; /* 태블릿 폰트 크기 */
+            font-size: 1.5rem; /* 태블릿 폰트 크기 */
         }
     }
 
