@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta, timezone
 from stock import collect_all_assets
 import boto3
+from streamlit_plotly_events import plotly_events
 
 KST = timezone(timedelta(hours=9))
 
@@ -302,41 +303,130 @@ if not df.empty:
                 stock_only_for_market = filtered_df[filtered_df['asset_type'] == 'stock'].copy()
                 
                 if not stock_only_for_market.empty:
-                    market_summary = stock_only_for_market.groupby('market')['eval_amount_krw'].sum().reset_index()
+                    # 세션 상태 초기화
+                    if 'selected_market' not in st.session_state:
+                        st.session_state['selected_market'] = None
                     
-                    market_summary['market_name'] = market_summary['market'].map({
-                        'domestic': '국내주식',
-                        'overseas': '해외주식'
-                    })
+                    total_stock_value = stock_only_for_market['eval_amount_krw'].sum()
                     
-                    market_colors = {
-                        '국내주식': '#4A90E2',
-                        '해외주식': '#E24A4A'
-                    }
-                    
-                    fig = px.pie(market_summary, names='market_name', values='eval_amount_krw',
-                                title='시장별 분포', hole=0.35,
-                                color='market_name',
-                                color_discrete_map=market_colors)
-                    fig.update_traces(
-                        textposition='inside',
-                        texttemplate='<b>%{label}</b><br>₩%{value:,.0f}',
-                        textfont=dict(size=14, family='Arial')
-                    )
-                    fig.update_layout(
-                        height=450,
-                        showlegend=True,
-                        legend=dict(
-                            orientation="h",
-                            yanchor="top",
-                            y=-0.15,
-                            xanchor="center",
-                            x=0.5,
-                            font=dict(size=10)
-                        ),
-                        margin=dict(l=10, r=10, t=50, b=80)
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
+                    # 클릭된 시장이 있으면 해당 시장의 종목별 차트 표시
+                    if st.session_state['selected_market']:
+                        selected_market = st.session_state['selected_market']
+                        market_stocks = stock_only_for_market[stock_only_for_market['market'] == selected_market].copy()
+                        
+                        if not market_stocks.empty:
+                            # 종목별 그룹화 및 정렬
+                            stock_summary = market_stocks.groupby(['ticker', 'name', 'currency']).agg({
+                                'eval_amount_krw': 'sum',
+                                'quantity': 'sum'
+                            }).reset_index()
+                            
+                            top_10_stocks = stock_summary.nlargest(10, 'eval_amount_krw')
+                            top_10_stocks['display_name'] = top_10_stocks.apply(
+                                lambda row: row['name'] if selected_market == 'domestic' else row['ticker'], 
+                                axis=1
+                            )
+                            
+                            market_title = '국내주식' if selected_market == 'domestic' else '해외주식'
+                            
+                            # 해외주식인 경우 색상 패턴, 국내주식인 경우 다른 색상 패턴
+                            if selected_market == 'domestic':
+                                stock_colors = [
+                                    '#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#592941',
+                                    '#72DDF7', '#B33DC6', '#F7B801', '#DC5E5E', '#6B5B95'
+                                ]
+                            else:
+                                stock_colors = [
+                                    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+                                    '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
+                                ]
+                            
+                            fig = px.pie(top_10_stocks, names='display_name', values='eval_amount_krw',
+                                        title=f'{market_title} 주요 종목 (Top 10)', hole=0.35,
+                                        color_discrete_sequence=stock_colors)
+                            fig.update_traces(
+                                textposition='inside',
+                                texttemplate='<b>%{label}</b><br>%{percent}',
+                                textfont=dict(size=12, family='Arial')
+                            )
+                            fig.update_layout(
+                                height=450,
+                                showlegend=True,
+                                legend=dict(
+                                    orientation="h",
+                                    yanchor="top",
+                                    y=-0.15,
+                                    xanchor="center",
+                                    x=0.5,
+                                    font=dict(size=10)
+                                ),
+                                margin=dict(l=10, r=10, t=50, b=80)
+                            )
+                            
+                            # 뒤로가기 버튼 표시
+                            if st.button("← 뒤로가기", key="back_to_market"):
+                                st.session_state['selected_market'] = None
+                                st.rerun()
+                            
+                            # 종목별 차트 표시
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                    else:
+                        # 기본 시장별 분포 차트
+                        market_summary = stock_only_for_market.groupby('market')['eval_amount_krw'].sum().reset_index()
+                        market_summary['market_name'] = market_summary['market'].map({
+                            'domestic': '국내주식',
+                            'overseas': '해외주식'
+                        })
+                        
+                        # 퍼센테이지 계산
+                        market_summary['percentage'] = (market_summary['eval_amount_krw'] / total_stock_value * 100).round(1)
+                        
+                        # 더 세련된 색상 적용
+                        market_colors = {
+                            '국내주식': '#667eea',  # 더 세련된 블루
+                            '해외주식': '#f093fb'   # 더 세련된 핑크
+                        }
+                        
+                        fig = px.pie(market_summary, names='market_name', values='eval_amount_krw',
+                                    title='시장별 분포', hole=0.35,
+                                    color='market_name',
+                                    color_discrete_map=market_colors)
+                        fig.update_traces(
+                            textposition='inside',
+                            texttemplate='<b>%{label}</b><br>%{percent}',
+                            textfont=dict(size=14, family='Arial')
+                        )
+                        fig.update_layout(
+                            height=450,
+                            showlegend=True,
+                            legend=dict(
+                                orientation="h",
+                                yanchor="top",
+                                y=-0.15,
+                                xanchor="center",
+                                x=0.5,
+                                font=dict(size=10)
+                            ),
+                            margin=dict(l=10, r=10, t=50, b=80)
+                        )
+                        
+                        # plotly_events로 클릭 이벤트 처리
+                        selected_points = plotly_events(fig, key="market_distribution_chart", click_event=True)
+                        
+                        if selected_points:
+                            point = selected_points[0]
+                            # 클릭된 포인트의 정보 가져오기
+                            point_index = point.get('pointIndex', 0)
+                            if point_index is not None:
+                                market_names = market_summary['market_name'].tolist()
+                                if point_index < len(market_names):
+                                    selected_market_name = market_names[point_index]
+                                    # market_name을 market 키로 매핑
+                                    market_mapping = {'국내주식': 'domestic', '해외주식': 'overseas'}
+                                    if selected_market_name in market_mapping:
+                                        st.session_state['selected_market'] = market_mapping[selected_market_name]
+                                        st.rerun()
 
         st.markdown("---")
         st.subheader("📋 계좌별 상세 보유 현황")
