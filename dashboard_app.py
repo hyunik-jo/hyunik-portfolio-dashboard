@@ -298,103 +298,43 @@ if not df.empty:
                 st.plotly_chart(fig, use_container_width=True)
 
         with col_chart3:
-            stock_df = filtered_df[filtered_df['asset_type']=='stock']
-            if not stock_df.empty:
-                currency_summary = stock_df.groupby('currency')['eval_amount_krw'].sum().reset_index()
-                currency_summary = currency_summary.sort_values('eval_amount_krw', ascending=True)
+            if not filtered_df.empty:
+                stock_only_for_market = filtered_df[filtered_df['asset_type'] == 'stock'].copy()
                 
-                currency_emoji = {
-                    'KRW': '🇰🇷 KRW',
-                    'USD': '🇺🇸 USD',
-                    'HKD': '🇭🇰 HKD',
-                    'JPY': '🇯🇵 JPY',
-                    'CNY': '🇨🇳 CNY'
-                }
-                currency_summary['currency_display'] = currency_summary['currency'].map(
-                    lambda x: currency_emoji.get(x, f'💱 {x}')
-                )
-                
-                currency_colors = {
-                    'KRW': '#4A90E2',
-                    'USD': '#E24A4A',
-                    'HKD': '#50C878',
-                    'JPY': '#FFD700',
-                    'CNY': '#FF6B6B'
-                }
-                
-                fig = go.Figure()
-                
-                for _, row in currency_summary.iterrows():
-                    color = currency_colors.get(row['currency'], '#CCCCCC')
-                    fig.add_trace(go.Bar(
-                        y=[row['currency_display']],
-                        x=[row['eval_amount_krw']],
-                        orientation='h',
-                        name=row['currency_display'],
-                        marker=dict(color=color),
-                        text=[f"₩{row['eval_amount_krw']:,.0f}"],
-                        textposition='auto',
-                        textfont=dict(size=11),
-                        showlegend=False
-                    ))
-                
-                fig.update_layout(
-                    title='💱 통화별 비중',
-                    height=450,
-                    xaxis_title='평가금액 (₩)',
-                    yaxis_title='',
-                    margin=dict(l=10, r=10, t=50, b=30),
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
-                
-                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.2)')
-                fig.update_yaxes(showgrid=False)
-                
-                st.plotly_chart(fig, use_container_width=True)
-
-        st.markdown("")
-        
-        if not filtered_df.empty:
-            stock_only_for_market = filtered_df[filtered_df['asset_type'] == 'stock'].copy()
-            
-            if not stock_only_for_market.empty:
-                market_summary = stock_only_for_market.groupby('market')['eval_amount_krw'].sum().reset_index()
-                
-                market_summary['market_name'] = market_summary['market'].map({
-                    'domestic': '🇰🇷 국내 주식',
-                    'overseas': '🌎 해외 주식'
-                })
-                
-                market_colors = {
-                    '🇰🇷 국내 주식': '#4A90E2',
-                    '🌎 해외 주식': '#E24A4A'
-                }
-                
-                col_left, col_center, col_right = st.columns([1, 2, 1])
-                
-                with col_center:
+                if not stock_only_for_market.empty:
+                    market_summary = stock_only_for_market.groupby('market')['eval_amount_krw'].sum().reset_index()
+                    
+                    market_summary['market_name'] = market_summary['market'].map({
+                        'domestic': '국내주식',
+                        'overseas': '해외주식'
+                    })
+                    
+                    market_colors = {
+                        '국내주식': '#4A90E2',
+                        '해외주식': '#E24A4A'
+                    }
+                    
                     fig = px.pie(market_summary, names='market_name', values='eval_amount_krw',
-                                title='🌍 시장별 분포', hole=0.35,
+                                title='시장별 분포', hole=0.35,
                                 color='market_name',
                                 color_discrete_map=market_colors)
                     fig.update_traces(
                         textposition='inside',
-                        texttemplate='<b>%{label}</b><br>%{percent}<br>₩%{value:,.0f}',
+                        texttemplate='<b>%{label}</b><br>₩%{value:,.0f}',
                         textfont=dict(size=14, family='Arial')
                     )
                     fig.update_layout(
-                        height=500,
+                        height=450,
                         showlegend=True,
                         legend=dict(
                             orientation="h",
                             yanchor="top",
-                            y=-0.1,
+                            y=-0.15,
                             xanchor="center",
                             x=0.5,
-                            font=dict(size=12)
+                            font=dict(size=10)
                         ),
-                        margin=dict(l=20, r=20, t=60, b=100)
+                        margin=dict(l=10, r=10, t=50, b=80)
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
