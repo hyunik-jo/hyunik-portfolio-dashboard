@@ -308,34 +308,30 @@ if not df.empty:
                 st.plotly_chart(fig, use_container_width=True)
 
         with col_chart3:
-            # stock만 필터링하고 market이 있는 데이터만 사용
+            # stock만 필터링
             stock_only_df = filtered_df[
                 (filtered_df['asset_type'] == 'stock') & 
                 (filtered_df['market'].notna())
             ].copy()
             
             if not stock_only_df.empty:
-                # 1. market 기준으로 그룹화
+                # market 기준으로 그룹화
                 market_summary = stock_only_df.groupby('market', as_index=False)['eval_amount_krw'].sum()
                 
-                # 디버그: 실제 값 확인
-                st.write("Debug - Market Summary:")
-                st.write(market_summary)
-                
-                # 2. 라벨 매핑
+                # 라벨 매핑
                 market_label_map = {
                     'domestic': '국내',
                     'overseas': '해외'
                 }
                 market_summary['market_label'] = market_summary['market'].map(market_label_map)
                 
-                # 3. 색상 맵
-                market_colors = {
+                # 색상 맵
+                market_colors_map = {
                     'domestic': '#003478',
                     'overseas': '#B22234'
                 }
                 
-                # 4. 차트 생성
+                # 차트 생성
                 fig = px.pie(
                     market_summary, 
                     names='market_label', 
@@ -343,14 +339,13 @@ if not df.empty:
                     title='국내/해외 비중',
                     hole=0.35,
                     color='market',
-                    color_discrete_map=market_colors
+                    color_discrete_map=market_colors_map
                 )
                 
                 fig.update_traces(
                     textposition='inside',
                     texttemplate='<b>%{label}</b><br>%{percent}',
-                    textfont=dict(size=14, family='Arial'),
-                    hovertemplate='<b>%{label}</b><br>평가액: ₩%{value:,.0f}<br>비중: %{percent}<extra></extra>'
+                    textfont=dict(size=14, family='Arial')
                 )
                 
                 fig.update_layout(
@@ -362,15 +357,13 @@ if not df.empty:
                         y=-0.15,
                         xanchor="center",
                         x=0.5,
-                        font=dict(size=10)
+                        font=dict(size=10, family='Arial')
                     ),
                     margin=dict(l=10, r=10, t=50, b=80),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
                     font=dict(family='Arial', size=12)
                 )
                 
-                # plotly_events 사용
+                # plotly_events 사용 (차트를 자동으로 렌더링함)
                 if PLOTLY_EVENTS_AVAILABLE:
                     selected_points = plotly_events(
                         fig, 
@@ -378,20 +371,16 @@ if not df.empty:
                         hover_event=False,
                         select_event=False,
                         key="market_pie_chart",
-                        override_height=450,
-                        override_width="100%"
+                        override_height=450
                     )
                     
-                    # 디버그: 클릭 이벤트 확인
-                    if selected_points:
-                        st.write("Debug - Selected Points:")
-                        st.write(selected_points)
-                        
-                        # pointNumber 사용
-                        if len(selected_points) > 0 and 'pointNumber' in selected_points[0]:
+                    # 클릭 이벤트 처리
+                    if selected_points and len(selected_points) > 0:
+                        if 'pointNumber' in selected_points[0]:
                             point_index = selected_points[0]['pointNumber']
                             selected_market = market_summary.iloc[point_index]['market']
                             
+                            # 이전 선택과 다를 때만 업데이트
                             if st.session_state.get('selected_market') != selected_market:
                                 st.session_state['selected_market'] = selected_market
                                 st.rerun()
@@ -399,6 +388,123 @@ if not df.empty:
                     st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning("주식 데이터가 없습니다.")
+
+# 선택된 market의 종목 구성 표시 (위 차트 섹션 바로 다음에 한 번만 배치)
+if 'selected_market' in st.session_state:
+    st.markdown("---")
+    selected_market = st.session_state['selected_market']
+    market_name = '국내' if selected_market == 'domestic' else '해외'
+    
+    st.subheader(f"📊 {market_name} 종목 구성")
+    
+    # 선택된 market의 주식만 필터링
+    selected_market_stocks = filtered_df[
+        (filtered_df['market'] == selected_market) & 
+        (filtered_df['asset_type'] == 'stock')
+    ].copy()
+    
+    if not selected_market_stocks.empty:
+        # Top 10 종목 선택
+        top_stocks = selected_market_stocks.nlargest(10, 'eval_amount_krw').copy()
+        
+        # 표시용 이름 설정
+        top_stocks['display_name'] = top_stocks['name']
+        
+        # 색상 설정
+        if selected_market == 'domestic':
+            colors = ['#003478', '#0047AB', '#4169E1', '#5B9BD5', '#6FA8DC',
+                     '#93C5FD', '#A8DADC', '#B4D7E8', '#C9E4F7', '#DBEAFE']
+        else:
+            colors = ['#B22234', '#DC143C', '#E63946', '#F08080', '#FA8072',
+                     '#FFB6C1', '#FFC0CB', '#FFD1DC', '#FFE4E1', '#FFF0F5']
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # 파이 차트
+            fig_detail = px.pie(
+                top_stocks, 
+                names='display_name', 
+                values='eval_amount_krw',
+                title=f'{market_name} Top 10 종목',
+                hole=0.35,
+                color_discrete_sequence=colors
+            )
+            fig_detail.update_traces(
+                textposition='inside',
+                texttemplate='<b>%{label}</b><br>%{percent}',
+                textfont=dict(size=11, family='Arial')
+            )
+            fig_detail.update_layout(
+                height=400,
+                showlegend=True,
+                legend=dict(
+                    orientation="v",
+                    yanchor="middle",
+                    y=0.5,
+                    xanchor="left",
+                    x=1.05,
+                    font=dict(size=9, family='Arial')
+                ),
+                font=dict(family='Arial')
+            )
+            st.plotly_chart(fig_detail, use_container_width=True)
+        
+        with col2:
+            # 바 차트
+            fig_bar = px.bar(
+                top_stocks.sort_values('eval_amount_krw', ascending=True),
+                y='display_name',
+                x='eval_amount_krw',
+                orientation='h',
+                title=f'{market_name} Top 10 평가금액',
+                color='eval_amount_krw',
+                color_continuous_scale=['#FFE4E1', '#B22234'] if selected_market == 'overseas' else ['#DBEAFE', '#003478']
+            )
+            fig_bar.update_layout(
+                height=400,
+                showlegend=False,
+                xaxis_title="평가금액 (원)",
+                yaxis_title="",
+                coloraxis_showscale=False,
+                font=dict(family='Arial')
+            )
+            fig_bar.update_traces(
+                text=top_stocks.sort_values('eval_amount_krw', ascending=True)['eval_amount_krw'].apply(lambda x: f'₩{x:,.0f}'),
+                textposition='outside'
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+        
+        # 상세 테이블
+        st.markdown("#### 📋 상세 내역")
+        detail_table = selected_market_stocks.copy()
+        detail_table = detail_table.sort_values('eval_amount_krw', ascending=False)
+        
+        detail_table['종목명'] = detail_table['name']
+        detail_table['티커'] = detail_table['ticker']
+        detail_table['평가금액'] = detail_table['eval_amount_krw'].apply(lambda x: f"₩{x:,.0f}")
+        detail_table['비중(%)'] = (detail_table['eval_amount_krw'] / detail_table['eval_amount_krw'].sum() * 100).apply(lambda x: f"{x:.2f}%")
+        detail_table['수익률(%)'] = detail_table.apply(
+            lambda row: f"{(row['profit_loss_krw'] / (row['eval_amount_krw'] - row['profit_loss_krw']) * 100):+.2f}%" 
+            if (row['eval_amount_krw'] - row['profit_loss_krw']) > 0 else "0.00%",
+            axis=1
+        )
+        
+        st.dataframe(
+            detail_table[['종목명', '티커', '평가금액', '비중(%)', '수익률(%)']],
+            hide_index=True,
+            use_container_width=True
+        )
+        
+        # 선택 해제 버튼
+        if st.button("🔙 전체 보기로 돌아가기"):
+            del st.session_state['selected_market']
+            st.rerun()
+    else:
+        st.info(f"{market_name}에 보유 중인 주식이 없습니다.")
+
+st.markdown("---")
+st.subheader("📋 계좌별 상세 보유 현황")
 
 # 선택된 market의 종목 구성 표시
 if 'selected_market' in st.session_state:
