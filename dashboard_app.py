@@ -161,19 +161,33 @@ def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
     exchange_rates_to_krw = {s: 1 / r if r != 0 else 0 for s, r in rates.items()}
     exchange_rates_to_krw['KRW'] = 1
     
-    df['eval_amount_krw'] = df.apply(lambda r: r['eval_amount'] * exchange_rates_to_krw.get(r['currency'], 1), axis=1)
-    df['profit_loss_krw'] = df.apply(lambda r: r['profit_loss'] * exchange_rates_to_krw.get(r['currency'], 1), axis=1)
+    # [핵심 수정] float로 강제 형변환하여 계산
+    df['eval_amount_krw'] = df.apply(lambda r: float(r['eval_amount']) * exchange_rates_to_krw.get(r['currency'], 1), axis=1)
+    df['profit_loss_krw'] = df.apply(lambda r: float(r['profit_loss']) * exchange_rates_to_krw.get(r['currency'], 1), axis=1)
     
     df['principal_krw'] = df.apply(
-        lambda r: (r['avg_buy_price'] * r['quantity'] * exchange_rates_to_krw.get(r['currency'], 1))
-        if r['asset_type'] == 'stock' and r['avg_buy_price'] > 0 else (r['eval_amount_krw'] - r['profit_loss_krw']),
+        lambda r: (float(r['avg_buy_price']) * float(r['quantity']) * exchange_rates_to_krw.get(r['currency'], 1))
+        if r['asset_type'] == 'stock' and float(r['avg_buy_price']) > 0 else (r['eval_amount_krw'] - r['profit_loss_krw']),
         axis=1
     )
     df.loc[df['asset_type'] == 'cash', 'principal_krw'] = df['eval_amount_krw']
     
+    # [추가 안전장치] pandas numeric 변환
+    df['eval_amount_krw'] = pd.to_numeric(df['eval_amount_krw'], errors='coerce').fillna(0)
+    
+    # 국가 정보 추가
+    def get_country(row):
+        if row['market'] == 'domestic':
+            return '🇰🇷 대한민국'
+        elif row['currency'] == 'USD':
+            return '🇺🇸 미국'
+        elif row['currency'] == 'HKD':
+            return '🇭🇰 홍콩'
+        else:
+            return '기타'
+    df['country'] = df.apply(get_country, axis=1)
+    
     return df, exchange_rates_to_krw, last_update_time, last_updated
-
-
 st.title("💼 통합 포트폴리오 대시보드")
 
 col1, col2, col3 = st.columns([5, 1, 0.5])
