@@ -349,19 +349,41 @@ if not df.empty:
                 stock_only_df = stock_only_df[stock_only_df['market'].isin(valid_markets)]
                 
                 if not stock_only_df.empty:
-                    # 4. market별로 직접 합계 계산 (가장 안전한 방법)
+                    # 4. market별로 직접 합계 계산 - 원본 데이터 그대로 사용
+                    # 중복 없이 정확히 계산하기 위해 groupby 사용 (같은 종목이 여러 계좌에 있어도 각각 계산)
                     domestic_total = stock_only_df[stock_only_df['market'] == 'domestic']['eval_amount_krw'].sum()
                     overseas_total = stock_only_df[stock_only_df['market'] == 'overseas']['eval_amount_krw'].sum()
                     
-                    # 5. 차트용 데이터프레임 직접 생성
+                    # 디버깅: 실제 계산 값 확인
+                    total_all = domestic_total + overseas_total
+                    
+                    # 값이 제대로 계산되었는지 검증
+                    domestic_total = float(domestic_total) if not pd.isna(domestic_total) else 0.0
+                    overseas_total = float(overseas_total) if not pd.isna(overseas_total) else 0.0
+                    
+                    # 5. 차트용 데이터프레임 직접 생성 (0보다 큰 값만)
                     market_data = []
                     if domestic_total > 0:
-                        market_data.append({'market': 'domestic', 'market_label': '국내', 'eval_amount_krw': float(domestic_total)})
+                        market_data.append({
+                            'market': 'domestic', 
+                            'market_label': '국내', 
+                            'eval_amount_krw': float(domestic_total)
+                        })
                     if overseas_total > 0:
-                        market_data.append({'market': 'overseas', 'market_label': '해외', 'eval_amount_krw': float(overseas_total)})
+                        market_data.append({
+                            'market': 'overseas', 
+                            'market_label': '해외', 
+                            'eval_amount_krw': float(overseas_total)
+                        })
                     
                     if market_data:
                         market_summary = pd.DataFrame(market_data)
+                        
+                        # 값이 제대로 설정되었는지 확인
+                        market_summary['eval_amount_krw'] = pd.to_numeric(market_summary['eval_amount_krw'], errors='coerce').fillna(0)
+                        
+                        # 디버깅: 실제 계산된 값 확인 (개발 중에만)
+                        # st.write(f"디버그 - 국내: {domestic_total:,.0f}, 해외: {overseas_total:,.0f}")
                         
                         # 6. 색상 맵 정의 (키값을 한글 라벨로 설정)
                         market_colors_map = {
@@ -369,7 +391,7 @@ if not df.empty:
                             '해외': '#B22234'
                         }
                         
-                        # 7. 차트 생성 - names와 color를 'market_label'로 통일하여 버그 방지
+                        # 7. 차트 생성 - px.pie 사용
                         fig = px.pie(
                             market_summary,
                             names='market_label',
@@ -380,11 +402,30 @@ if not df.empty:
                             color_discrete_map=market_colors_map
                         )
                         
+                        # 값 표시 템플릿을 더 명확하게
                         fig.update_traces(
                             textposition='inside',
-                            texttemplate='<b>%{label}</b><br>%{percent}',
-                            textfont=dict(size=14, family='Arial')
+                            texttemplate='<b>%{label}</b><br>%{percent}<br>₩%{value:,.0f}',
+                            textfont=dict(size=12, family='Arial'),
+                            hovertemplate='<b>%{label}</b><br>평가금액: ₩%{value:,.0f}<br>비중: %{percent}<extra></extra>'
                         )
+                        
+                        # 디버깅 정보 (실제 계산 값 확인용)
+                        with st.expander("🔍 디버깅 정보 (실제 계산 값)", expanded=False):
+                            st.write(f"**국내 주식 총액:** ₩{domestic_total:,.0f}")
+                            st.write(f"**해외 주식 총액:** ₩{overseas_total:,.0f}")
+                            st.write(f"**전체 합계:** ₩{total_all:,.0f}")
+                            if total_all > 0:
+                                st.write(f"**국내 비중:** {(domestic_total/total_all*100):.2f}%")
+                                st.write(f"**해외 비중:** {(overseas_total/total_all*100):.2f}%")
+                            st.write("---")
+                            st.write("**차트에 전달된 데이터:**")
+                            st.dataframe(market_summary)
+                            st.write("---")
+                            domestic_count = len(stock_only_df[stock_only_df['market'] == 'domestic'])
+                            overseas_count = len(stock_only_df[stock_only_df['market'] == 'overseas'])
+                            st.write(f"**국내 종목 수:** {domestic_count}개")
+                            st.write(f"**해외 종목 수:** {overseas_count}개")
                         
                         fig.update_layout(
                             height=450,
