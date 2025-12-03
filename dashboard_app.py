@@ -385,49 +385,33 @@ if not df.empty:
                         # 디버깅: 실제 계산된 값 확인 (개발 중에만)
                         # st.write(f"디버그 - 국내: {domestic_total:,.0f}, 해외: {overseas_total:,.0f}")
                         
-                        # 6. 색상 맵 정의 (키값을 한글 라벨로 설정)
+                        # 6. 색상 맵 정의
                         market_colors_map = {
                             '국내': '#003478',
                             '해외': '#B22234'
                         }
                         
-                        # 7. 차트 생성 - px.pie 사용
-                        fig = px.pie(
-                            market_summary,
-                            names='market_label',
-                            values='eval_amount_krw',
-                            title='국내/해외 비중',
-                            hole=0.35,
-                            color='market_label',
-                            color_discrete_map=market_colors_map
-                        )
+                        # 7. 차트 생성 - go.Figure로 직접 생성하여 값 전달 문제 해결
+                        labels = market_summary['market_label'].tolist()
+                        values = market_summary['eval_amount_krw'].tolist()
+                        colors = [market_colors_map.get(label, '#808080') for label in labels]
                         
-                        # 값 표시 템플릿을 더 명확하게
-                        fig.update_traces(
+                        # 값이 제대로 숫자인지 확인
+                        values = [float(v) for v in values]
+                        
+                        fig = go.Figure(data=[go.Pie(
+                            labels=labels,
+                            values=values,
+                            hole=0.35,
+                            marker=dict(colors=colors),
                             textposition='inside',
                             texttemplate='<b>%{label}</b><br>%{percent}<br>₩%{value:,.0f}',
                             textfont=dict(size=12, family='Arial'),
                             hovertemplate='<b>%{label}</b><br>평가금액: ₩%{value:,.0f}<br>비중: %{percent}<extra></extra>'
-                        )
-                        
-                        # 디버깅 정보 (실제 계산 값 확인용)
-                        with st.expander("🔍 디버깅 정보 (실제 계산 값)", expanded=False):
-                            st.write(f"**국내 주식 총액:** ₩{domestic_total:,.0f}")
-                            st.write(f"**해외 주식 총액:** ₩{overseas_total:,.0f}")
-                            st.write(f"**전체 합계:** ₩{total_all:,.0f}")
-                            if total_all > 0:
-                                st.write(f"**국내 비중:** {(domestic_total/total_all*100):.2f}%")
-                                st.write(f"**해외 비중:** {(overseas_total/total_all*100):.2f}%")
-                            st.write("---")
-                            st.write("**차트에 전달된 데이터:**")
-                            st.dataframe(market_summary)
-                            st.write("---")
-                            domestic_count = len(stock_only_df[stock_only_df['market'] == 'domestic'])
-                            overseas_count = len(stock_only_df[stock_only_df['market'] == 'overseas'])
-                            st.write(f"**국내 종목 수:** {domestic_count}개")
-                            st.write(f"**해외 종목 수:** {overseas_count}개")
+                        )])
                         
                         fig.update_layout(
+                            title='국내/해외 비중',
                             height=450,
                             showlegend=True,
                             legend=dict(
@@ -465,6 +449,27 @@ if not df.empty:
                                         st.rerun()
                         else:
                             st.plotly_chart(fig, use_container_width=True)
+                        
+                        # 디버깅 정보 (차트 아래에 표시)
+                        with st.expander("🔍 디버깅 정보 (실제 계산 값)", expanded=False):
+                            st.write(f"**국내 주식 총액:** ₩{domestic_total:,.0f}")
+                            st.write(f"**해외 주식 총액:** ₩{overseas_total:,.0f}")
+                            st.write(f"**전체 합계:** ₩{total_all:,.0f}")
+                            if total_all > 0:
+                                st.write(f"**국내 비중:** {(domestic_total/total_all*100):.2f}%")
+                                st.write(f"**해외 비중:** {(overseas_total/total_all*100):.2f}%")
+                            st.write("---")
+                            st.write("**차트에 전달된 데이터프레임:**")
+                            st.dataframe(market_summary)
+                            st.write("---")
+                            st.write(f"**차트에 전달된 labels:** {labels}")
+                            st.write(f"**차트에 전달된 values:** {[f'{v:,.0f}' for v in values]}")
+                            st.write(f"**차트에 전달된 colors:** {colors}")
+                            st.write("---")
+                            domestic_count = len(stock_only_df[stock_only_df['market'] == 'domestic'])
+                            overseas_count = len(stock_only_df[stock_only_df['market'] == 'overseas'])
+                            st.write(f"**국내 종목 수:** {domestic_count}개")
+                            st.write(f"**해외 종목 수:** {overseas_count}개")
                     else:
                         st.info("표시할 데이터가 없습니다.")
                 else:
