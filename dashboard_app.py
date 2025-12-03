@@ -280,6 +280,7 @@ if not df.empty:
                 )
                 fig.update_layout(
                     height=500, 
+                    autosize=False,
                     showlegend=True, 
                     legend=dict(
                         orientation="h",
@@ -289,7 +290,9 @@ if not df.empty:
                         x=0.5,
                         font=dict(size=11)
                     ),
-                    margin=dict(l=10, r=10, t=50, b=100)
+                    margin=dict(l=10, r=10, t=50, b=100),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -318,6 +321,7 @@ if not df.empty:
                 )
                 fig.update_layout(
                     height=500, 
+                    autosize=False,
                     showlegend=True, 
                     legend=dict(
                         orientation="h",
@@ -327,7 +331,9 @@ if not df.empty:
                         x=0.5,
                         font=dict(size=11)
                     ),
-                    margin=dict(l=10, r=10, t=50, b=100)
+                    margin=dict(l=10, r=10, t=50, b=100),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -416,6 +422,7 @@ if not df.empty:
                                 'font': {'color': 'white'}
                             },
                             height=500,
+                            autosize=False,
                             showlegend=True,
                             legend=dict(
                                 orientation="h",
