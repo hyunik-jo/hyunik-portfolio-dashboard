@@ -279,7 +279,7 @@ if not df.empty:
                     textfont=dict(size=12, family='Arial')
                 )
                 fig.update_layout(
-                    height=450, 
+                    height=500, 
                     showlegend=True, 
                     legend=dict(
                         orientation="h",
@@ -287,9 +287,9 @@ if not df.empty:
                         y=-0.15,
                         xanchor="center",
                         x=0.5,
-                        font=dict(size=10)
+                        font=dict(size=11)
                     ),
-                    margin=dict(l=10, r=10, t=50, b=80)
+                    margin=dict(l=10, r=10, t=50, b=100)
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -317,7 +317,7 @@ if not df.empty:
                     textfont=dict(size=12, family='Arial')
                 )
                 fig.update_layout(
-                    height=450, 
+                    height=500, 
                     showlegend=True, 
                     legend=dict(
                         orientation="h",
@@ -325,9 +325,9 @@ if not df.empty:
                         y=-0.15,
                         xanchor="center",
                         x=0.5,
-                        font=dict(size=10)
+                        font=dict(size=11)
                     ),
-                    margin=dict(l=10, r=10, t=50, b=80)
+                    margin=dict(l=10, r=10, t=50, b=100)
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -415,7 +415,7 @@ if not df.empty:
                                 'text': '국내/해외 비중',
                                 'font': {'color': 'white'}
                             },
-                            height=450,
+                            height=500,
                             showlegend=True,
                             legend=dict(
                                 orientation="h",
@@ -423,9 +423,9 @@ if not df.empty:
                                 y=-0.15,
                                 xanchor="center",
                                 x=0.5,
-                                font=dict(size=10, color='white')
+                                font=dict(size=11, color='white')
                             ),
-                            margin=dict(l=10, r=10, t=50, b=80),
+                            margin=dict(l=10, r=10, t=50, b=100),
                             paper_bgcolor='rgba(0,0,0,0)',
                             plot_bgcolor='rgba(0,0,0,0)',
                             font=dict(color='white')
@@ -439,7 +439,7 @@ if not df.empty:
                                 hover_event=False,
                                 select_event=False,
                                 key="market_pie_chart",
-                                override_height=450
+                                override_height=500
                             )
                             
                             if selected_points and len(selected_points) > 0:
