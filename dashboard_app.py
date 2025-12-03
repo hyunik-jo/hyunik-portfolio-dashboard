@@ -354,6 +354,7 @@ if not df.empty:
                     '해외': '#B22234'
                 }
                 
+                # [수정 2] color 인자를 'market_label'로 변경하여 names와 통일
                 fig = px.pie(
                     market_summary,
                     names='market_label',       # 기준: 한글 라벨
@@ -364,6 +365,7 @@ if not df.empty:
                     color_discrete_map=market_colors_map
                 )
                 
+                # ... (이하 디자인 및 이벤트 처리 코드는 그대로 유지) ...
                 fig.update_traces(
                     textposition='inside',
                     texttemplate='<b>%{label}</b><br>%{percent}',
@@ -388,7 +390,7 @@ if not df.empty:
                 
                 if PLOTLY_EVENTS_AVAILABLE:
                     selected_points = plotly_events(
-                        fig, 
+                        fig,
                         click_event=True,
                         hover_event=False,
                         select_event=False,
@@ -399,9 +401,10 @@ if not df.empty:
                     if selected_points and len(selected_points) > 0:
                         if 'pointNumber' in selected_points[0]:
                             point_index = selected_points[0]['pointNumber']
-                            selected_market = market_summary.iloc[point_index]['market']
+                            # market_summary에서 원래 market 키값('domestic'/'overseas')을 찾아야 함
+                            selected_market = market_summary.iloc[point_index]['market']        
                             
-                            if st.session_state.get('selected_market') != selected_market:
+                            if st.session_state.get('selected_market') != selected_market:      
                                 st.session_state['selected_market'] = selected_market
                                 st.rerun()
                 else:
