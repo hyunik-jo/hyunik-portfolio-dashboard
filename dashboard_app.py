@@ -140,8 +140,10 @@ DIR_PATH = Path(__file__).resolve().parent
 @st.cache_data(ttl=timedelta(minutes=5))
 def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
     import os
+    # 키움증권 데이터 건너뛰기 옵션 (필요시)
     skip_kiwoom = os.getenv("SKIP_KIWOOM", "false").lower() == "true"
     
+    # 1. 데이터 수집
     assets_list = collect_all_assets()
     last_updated = datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')
     
@@ -151,6 +153,7 @@ def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
 
     df = pd.DataFrame(assets_list)
 
+    # 2. 환율 정보 가져오기
     symbols_in_data = df['currency'].unique().tolist()
     rates, last_update_time = get_exchange_rates(symbols=symbols_in_data, base_currency='KRW')
 
@@ -161,7 +164,8 @@ def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
     exchange_rates_to_krw = {s: 1 / r if r != 0 else 0 for s, r in rates.items()}
     exchange_rates_to_krw['KRW'] = 1
     
-    # [핵심 수정] float로 강제 형변환하여 계산
+    # 3. [핵심 수정] 모든 계산을 강제로 실수형(float)으로 변환하여 수행
+    # 이렇게 해야 '문자열'로 인식되어 합계가 안 구해지는 문제를 막을 수 있습니다.
     df['eval_amount_krw'] = df.apply(lambda r: float(r['eval_amount']) * exchange_rates_to_krw.get(r['currency'], 1), axis=1)
     df['profit_loss_krw'] = df.apply(lambda r: float(r['profit_loss']) * exchange_rates_to_krw.get(r['currency'], 1), axis=1)
     
@@ -172,10 +176,10 @@ def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
     )
     df.loc[df['asset_type'] == 'cash', 'principal_krw'] = df['eval_amount_krw']
     
-    # [추가 안전장치] pandas numeric 변환
+    # 4. [안전 장치] pandas의 숫자 변환 함수로 한 번 더 확실하게 처리
     df['eval_amount_krw'] = pd.to_numeric(df['eval_amount_krw'], errors='coerce').fillna(0)
     
-    # 국가 정보 추가
+    # 5. 국가 정보 추가 (차트용)
     def get_country(row):
         if row['market'] == 'domestic':
             return '🇰🇷 대한민국'
@@ -185,9 +189,13 @@ def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
             return '🇭🇰 홍콩'
         else:
             return '기타'
+            
     df['country'] = df.apply(get_country, axis=1)
     
     return df, exchange_rates_to_krw, last_update_time, last_updated
+
+
+
 st.title("💼 통합 포트폴리오 대시보드")
 
 col1, col2, col3 = st.columns([5, 1, 0.5])
