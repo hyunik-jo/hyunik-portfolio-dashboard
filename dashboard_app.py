@@ -338,76 +338,125 @@ if not df.empty:
             ].copy()
             
             if not stock_only_df.empty:
-                # 1. 데이터 타입 안전 변환 (기존 코드 유지)
+                # 1. 데이터 타입 안전 변환
                 stock_only_df['eval_amount_krw'] = pd.to_numeric(stock_only_df['eval_amount_krw'], errors='coerce').fillna(0)
                 
-                # 2. 그룹화 (기존 코드 유지)
-                market_summary = stock_only_df.groupby('market', as_index=False)['eval_amount_krw'].sum()
+                # 2. market 값을 정규화 (공백 제거, 소문자 변환)
+                stock_only_df['market'] = stock_only_df['market'].astype(str).str.strip().str.lower()
                 
-                # 3. 라벨 매핑 (기존 코드 유지)
-                market_label_map = {'domestic': '국내', 'overseas': '해외'}
-                market_summary['market_label'] = market_summary['market'].map(market_label_map) 
+                # 3. 유효한 market 값만 필터링 (domestic 또는 overseas만 허용)
+                valid_markets = ['domestic', 'overseas']
+                stock_only_df = stock_only_df[stock_only_df['market'].isin(valid_markets)]
                 
-                # [수정 1] 색상 맵의 키(Key)를 'names'에 들어갈 한글 라벨로 변경
-                market_colors_map = {
-                    '국내': '#003478',
-                    '해외': '#B22234'
-                }
-                
-                # [수정 2] color 인자를 'market_label'로 변경하여 names와 일치시킴
-                fig = px.pie(
-                    market_summary,
-                    names='market_label',       # 기준: 한글 라벨
-                    values='eval_amount_krw',
-                    title='국내/해외 비중',
-                    hole=0.35,
-                    color='market_label',       # 기준: 한글 라벨 (names와 통일!)
-                    color_discrete_map=market_colors_map
-                )
-                
-                # ... (이하 디자인 및 이벤트 처리 코드는 동일) ...
-                fig.update_traces(
-                    textposition='inside',
-                    texttemplate='<b>%{label}</b><br>%{percent}',
-                    textfont=dict(size=14, family='Arial')
-                )
-                
-                fig.update_layout(
-                    height=450,
-                    showlegend=True,
-                    legend=dict(
-                        orientation="h",
-                        yanchor="top",
-                        y=-0.15,
-                        xanchor="center",
-                        x=0.5,
-                        font=dict(size=10, family='Arial')
-                    ),
-                    margin=dict(l=10, r=10, t=50, b=80),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)'
-                )
-                
-                if PLOTLY_EVENTS_AVAILABLE:
-                    selected_points = plotly_events(
-                        fig,
-                        click_event=True,
-                        hover_event=False,
-                        select_event=False,
-                        key="market_pie_chart",
-                        override_height=450
-                    )
+                if not stock_only_df.empty:
+                    # 4. market별로 직접 합계 계산 (더 안전한 방법)
+                    domestic_total = stock_only_df[stock_only_df['market'] == 'domestic']['eval_amount_krw'].sum()
+                    overseas_total = stock_only_df[stock_only_df['market'] == 'overseas']['eval_amount_krw'].sum()
                     
-                    if selected_points and len(selected_points) > 0:
-                        if 'pointNumber' in selected_points[0]:
-                            point_index = selected_points[0]['pointNumber']
-                            # market_summary에서 원래 market 키값('domestic'/'overseas')을 찾아야 함
-                            selected_market = market_summary.iloc[point_index]['market']        
+                    # 5. 데이터프레임 생성
+                    market_data = []
+                    if domestic_total > 0:
+                        market_data.append({'market': 'domestic', 'market_label': '국내', 'eval_amount_krw': float(domestic_total)})
+                    if overseas_total > 0:
+                        market_data.append({'market': 'overseas', 'market_label': '해외', 'eval_amount_krw': float(overseas_total)})
+                    
+                    if market_data:
+                        market_summary = pd.DataFrame(market_data)
+                    else:
+                        market_summary = pd.DataFrame(columns=['market', 'market_label', 'eval_amount_krw'])
+                    
+                    if not market_summary.empty:
+                        # 8. 색상 맵 정의
+                        market_colors_map = {
+                            '국내': '#003478',
+                            '해외': '#B22234'
+                        }
+                        
+                        # 9. 차트 생성 - 실제 데이터를 사용
+                        fig = px.pie(
+                            market_summary,
+                            names='market_label',
+                            values='eval_amount_krw',
+                            title='국내/해외 비중',
+                            hole=0.35,
+                            color='market_label',
+                            color_discrete_map=market_colors_map
+                        )
+                        
+                        # 10. 차트 스타일 적용
+                        fig.update_traces(
+                            textposition='inside',
+                            texttemplate='<b>%{label}</b><br>%{percent}',
+                            textfont=dict(size=14, family='Arial')
+                        )
+                        
+                        fig.update_layout(
+                            height=450,
+                            showlegend=True,
+                            legend=dict(
+                                orientation="h",
+                                yanchor="top",
+                                y=-0.15,
+                                xanchor="center",
+                                x=0.5,
+                                font=dict(size=10, family='Arial')
+                            ),
+                            margin=dict(l=10, r=10, t=50, b=80),
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)'
+                        )
+                        
+                        # 11. 차트 이벤트 처리
+                        if PLOTLY_EVENTS_AVAILABLE:
+                            selected_points = plotly_events(
+                                fig,
+                                click_event=True,
+                                hover_event=False,
+                                select_event=False,
+                                key="market_pie_chart",
+                                override_height=450
+                            )
                             
-                            if st.session_state.get('selected_market') != selected_market:      
-                                st.session_state['selected_market'] = selected_market
-                                st.rerun()
+                            if selected_points and len(selected_points) > 0:
+                                if 'pointNumber' in selected_points[0]:
+                                    point_index = selected_points[0]['pointNumber']
+                                    if point_index < len(market_summary):
+                                        selected_market = market_summary.iloc[point_index]['market']        
+                                        
+                                        if st.session_state.get('selected_market') != selected_market:      
+                                            st.session_state['selected_market'] = selected_market
+                                            st.rerun()
+                        else:
+                            st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        # market_summary가 비어있으면 빈 차트 생성
+                        fig = go.Figure()
+                        fig.add_annotation(
+                            text="표시할 데이터가 없습니다",
+                            xref="paper", yref="paper",
+                            x=0.5, y=0.5,
+                            showarrow=False,
+                            font=dict(size=16)
+                        )
+                        fig.update_layout(
+                            height=450,
+                            title='국내/해외 비중'
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
                 else:
+                    # 유효한 market 값이 없으면 빈 차트 생성
+                    fig = go.Figure()
+                    fig.add_annotation(
+                        text="표시할 데이터가 없습니다",
+                        xref="paper", yref="paper",
+                        x=0.5, y=0.5,
+                        showarrow=False,
+                        font=dict(size=16)
+                    )
+                    fig.update_layout(
+                        height=450,
+                        title='국내/해외 비중'
+                    )
                     st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning("주식 데이터가 없습니다.")
