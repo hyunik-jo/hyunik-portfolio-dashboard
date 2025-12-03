@@ -411,7 +411,10 @@ if not df.empty:
                         )])
                         
                         fig.update_layout(
-                            title='국내/해외 비중',
+                            title={
+                                'text': '국내/해외 비중',
+                                'font': {'color': 'white'}
+                            },
                             height=450,
                             showlegend=True,
                             legend=dict(
@@ -420,9 +423,12 @@ if not df.empty:
                                 y=-0.15,
                                 xanchor="center",
                                 x=0.5,
-                                font=dict(size=10)
+                                font=dict(size=10, color='white')
                             ),
-                            margin=dict(l=10, r=10, t=50, b=80)
+                            margin=dict(l=10, r=10, t=50, b=80),
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            font=dict(color='white')
                         )
                         
                         # 8. 클릭 이벤트 처리
