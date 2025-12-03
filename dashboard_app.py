@@ -279,22 +279,19 @@ if not df.empty:
                     textfont=dict(size=12, family='Arial')
                 )
                 fig.update_layout(
-                    height=480,
-                    autosize=False,
+                    height=450, 
                     showlegend=True, 
                     legend=dict(
                         orientation="h",
                         yanchor="top",
-                        y=-0.12,
+                        y=-0.15,
                         xanchor="center",
                         x=0.5,
-                        font=dict(size=11)
+                        font=dict(size=10)
                     ),
-                    margin=dict(l=10, r=10, t=50, b=85),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)'
+                    margin=dict(l=10, r=10, t=50, b=80)
                 )
-                st.plotly_chart(fig, use_container_width=True, height=480)
+                st.plotly_chart(fig, use_container_width=True)
 
         with col_chart2:
             stock_df = filtered_df[filtered_df['asset_type']=='stock']
@@ -320,22 +317,19 @@ if not df.empty:
                     textfont=dict(size=12, family='Arial')
                 )
                 fig.update_layout(
-                    height=480,
-                    autosize=False,
+                    height=450, 
                     showlegend=True, 
                     legend=dict(
                         orientation="h",
                         yanchor="top",
-                        y=-0.12,
+                        y=-0.15,
                         xanchor="center",
                         x=0.5,
-                        font=dict(size=11)
+                        font=dict(size=10)
                     ),
-                    margin=dict(l=10, r=10, t=50, b=85),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)'
+                    margin=dict(l=10, r=10, t=50, b=80)
                 )
-                st.plotly_chart(fig, use_container_width=True, height=480)
+                st.plotly_chart(fig, use_container_width=True)
 
         with col_chart3:
             stock_only_df = filtered_df[
@@ -421,18 +415,17 @@ if not df.empty:
                                 'text': '국내/해외 비중',
                                 'font': {'color': 'white'}
                             },
-                            height=480,
-                            autosize=False,
+                            height=450,
                             showlegend=True,
                             legend=dict(
                                 orientation="h",
                                 yanchor="top",
-                                y=-0.12,
+                                y=-0.15,
                                 xanchor="center",
                                 x=0.5,
-                                font=dict(size=11, color='white')
+                                font=dict(size=10, color='white')
                             ),
-                            margin=dict(l=10, r=10, t=50, b=85),
+                            margin=dict(l=10, r=10, t=50, b=80),
                             paper_bgcolor='rgba(0,0,0,0)',
                             plot_bgcolor='rgba(0,0,0,0)',
                             font=dict(color='white')
@@ -446,7 +439,7 @@ if not df.empty:
                                 hover_event=False,
                                 select_event=False,
                                 key="market_pie_chart",
-                                override_height=480
+                                override_height=450
                             )
                             
                             if selected_points and len(selected_points) > 0:
@@ -459,7 +452,7 @@ if not df.empty:
                                         st.session_state['selected_market'] = selected_market
                                         st.rerun()
                         else:
-                            st.plotly_chart(fig, use_container_width=True, height=480)
+                            st.plotly_chart(fig, use_container_width=True)
                     else:
                         st.info("표시할 데이터가 없습니다.")
                 else:
