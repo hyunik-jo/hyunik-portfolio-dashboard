@@ -338,26 +338,29 @@ if not df.empty:
             ].copy()
             
             if not stock_only_df.empty:
+                # 1. 데이터 타입 안전 변환 (기존 코드 유지)
+                stock_only_df['eval_amount_krw'] = pd.to_numeric(stock_only_df['eval_amount_krw'], errors='coerce').fillna(0)
+                
+                # 2. 그룹화 (기존 코드 유지)
                 market_summary = stock_only_df.groupby('market', as_index=False)['eval_amount_krw'].sum()
                 
-                market_label_map = {
-                    'domestic': '국내',
-                    'overseas': '해외'
-                }
-                market_summary['market_label'] = market_summary['market'].map(market_label_map)
+                # 3. 라벨 매핑 (기존 코드 유지)
+                market_label_map = {'domestic': '국내', 'overseas': '해외'}
+                market_summary['market_label'] = market_summary['market'].map(market_label_map) 
                 
+                # [수정 1] 색상 맵의 키(Key)를 'names'에 들어갈 한글 라벨로 변경
                 market_colors_map = {
-                    'domestic': '#003478',
-                    'overseas': '#B22234'
+                    '국내': '#003478',
+                    '해외': '#B22234'
                 }
                 
                 fig = px.pie(
-                    market_summary, 
-                    names='market_label', 
+                    market_summary,
+                    names='market_label',       # 기준: 한글 라벨
                     values='eval_amount_krw',
                     title='국내/해외 비중',
                     hole=0.35,
-                    color='market',
+                    color='market_label',       # 기준: 한글 라벨 (names와 통일!)
                     color_discrete_map=market_colors_map
                 )
                 
