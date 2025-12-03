@@ -354,7 +354,7 @@ if not df.empty:
                     '해외': '#B22234'
                 }
                 
-                # [수정 2] color 인자를 'market_label'로 변경하여 names와 통일
+                # [수정 2] color 인자를 'market_label'로 변경하여 names와 일치시킴
                 fig = px.pie(
                     market_summary,
                     names='market_label',       # 기준: 한글 라벨
@@ -365,7 +365,7 @@ if not df.empty:
                     color_discrete_map=market_colors_map
                 )
                 
-                # ... (이하 디자인 및 이벤트 처리 코드는 그대로 유지) ...
+                # ... (이하 디자인 및 이벤트 처리 코드는 동일) ...
                 fig.update_traces(
                     textposition='inside',
                     texttemplate='<b>%{label}</b><br>%{percent}',
