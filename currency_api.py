@@ -14,7 +14,7 @@ def get_exchange_rates(symbols: list, base_currency: str = 'KRW') -> tuple[dict 
     """
     url = f"https://open.er-api.com/v6/latest/{base_currency}"
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
         

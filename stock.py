@@ -425,7 +425,6 @@ def collect_all_assets(skip_kiwoom=False):
         all_assets.extend(api.get_overseas_balance())
     
     # 키움증권 (법인)
-    kiw_config = load_account_config("C", "kiwoom")
     if skip_kiwoom:
         print("[키움증권(법인)] IP 제한으로 인해 스킵됨")
     else:
