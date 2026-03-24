@@ -3,8 +3,10 @@ import streamlit as st
 from datetime import datetime, timedelta, timezone
 import logging
 
+LOGGER = logging.getLogger(__name__)
 logging.getLogger('streamlit').setLevel(logging.ERROR)
 KST = timezone(timedelta(hours=9))
+EXCHANGE_API_TIMEOUT_SEC = 10
 
 @st.cache_data(ttl=timedelta(minutes=10))
 def get_exchange_rates(symbols: list, base_currency: str = 'KRW') -> tuple[dict | None, datetime | None]:
@@ -14,7 +16,7 @@ def get_exchange_rates(symbols: list, base_currency: str = 'KRW') -> tuple[dict 
     """
     url = f"https://open.er-api.com/v6/latest/{base_currency}"
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=EXCHANGE_API_TIMEOUT_SEC)
         response.raise_for_status()
         data = response.json()
         
@@ -32,7 +34,7 @@ def get_exchange_rates(symbols: list, base_currency: str = 'KRW') -> tuple[dict 
                 for symbol, rate in all_rates.items() 
                 if symbol in required_symbols
             }
-            print(f"환율 정보 API 호출 성공! (기준: {base_currency})")
+            LOGGER.info("환율 정보 API 호출 성공 (기준: %s)", base_currency)
             return filtered_rates, last_update_dt
         else:
             st.error("환율 정보를 가져오는 데 실패했습니다.")

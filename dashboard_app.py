@@ -1,50 +1,55 @@
-from pathlib import Path
 import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime, timedelta, timezone
-from stock import collect_all_assets
 import boto3
-
-# streamlit-plotly-events 라이브러리를 optional로 임포트
-try:
-    from streamlit_plotly_events import plotly_events
-    PLOTLY_EVENTS_AVAILABLE = True
-except ImportError:
-    PLOTLY_EVENTS_AVAILABLE = False
-    def plotly_events(fig, key=None, click_event=True):
-        return []
+import hmac
 
 KST = timezone(timedelta(hours=9))
 
-try:
-    from currency_api import get_exchange_rates
-except ImportError:
-    st.error("`currency_api.py` 파일을 찾을 수 없습니다.")
-    st.stop()
+st.set_page_config(layout="wide", page_title="통합 포트폴리오 대시보드")
+
+
+@st.cache_data(ttl=timedelta(minutes=10))
+def get_password_from_aws():
+    """AWS Parameter Store에서 비밀번호를 가져오기 (캐시 적용)."""
+    try:
+        ssm = boto3.client("ssm", region_name="ap-northeast-2")
+        response = ssm.get_parameter(
+            Name="/stock-dashboard/DASHBOARD_PASSWORD",
+            WithDecryption=True
+        )
+        return response["Parameter"]["Value"]
+    except Exception as e:
+        st.error(f"비밀번호를 불러올 수 없습니다: {e}")
+        return None
+
+
+@st.cache_resource
+def load_chart_dependencies():
+    """인증 이후에만 무거운 시각화 라이브러리를 로드."""
+    import pandas as pd
+    import plotly.express as px
+    import plotly.graph_objects as go
+
+    try:
+        from streamlit_plotly_events import plotly_events as _plotly_events
+        plotly_events_available = True
+    except ImportError:
+        plotly_events_available = False
+
+        def _plotly_events(fig, key=None, click_event=True, **kwargs):
+            return []
+
+    return pd, px, go, _plotly_events, plotly_events_available
 
 
 def check_password():
     """AWS Parameter Store에서 비밀번호를 가져와 인증"""
     
-    def get_password_from_aws():
-        """AWS Parameter Store에서 비밀번호 가져오기"""
-        try:
-            ssm = boto3.client('ssm', region_name='ap-northeast-2')
-            response = ssm.get_parameter(
-                Name='/stock-dashboard/DASHBOARD_PASSWORD',
-                WithDecryption=True
-            )
-            return response['Parameter']['Value']
-        except Exception as e:
-            st.error(f"비밀번호를 불러올 수 없습니다: {e}")
-            return None
-    
     def password_entered():
         """비밀번호 입력 확인"""
         correct_password = get_password_from_aws()
-        if correct_password and st.session_state["password"] == correct_password:
+        password_input = st.session_state.get("password", "")
+        if correct_password and hmac.compare_digest(password_input, correct_password):
             st.session_state["password_correct"] = True
             del st.session_state["password"]
         else:
@@ -93,7 +98,7 @@ def check_password():
 if not check_password():
     st.stop()
 
-st.set_page_config(layout="wide", page_title="통합 포트폴리오 대시보드")
+pd, px, go, plotly_events, PLOTLY_EVENTS_AVAILABLE = load_chart_dependencies()
 
 st.markdown("""
 <style>
@@ -134,17 +139,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-DIR_PATH = Path(__file__).resolve().parent
-
-
 @st.cache_data(ttl=timedelta(minutes=5))
-def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
+def load_data():
     import os
+    from stock import collect_all_assets
+    from currency_api import get_exchange_rates
+
     # 키움증권 데이터 건너뛰기 옵션 (필요시)
     skip_kiwoom = os.getenv("SKIP_KIWOOM", "false").lower() == "true"
     
     # 1. 데이터 수집
-    assets_list = collect_all_assets()
+    assets_list = collect_all_assets(skip_kiwoom=skip_kiwoom)
     last_updated = datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')
     
     if not assets_list:
@@ -195,13 +200,20 @@ def load_data() -> tuple[pd.DataFrame, dict, datetime | None, str]:
     return df, exchange_rates_to_krw, last_update_time, last_updated
 
 
+def highlight_negative_style(val):
+    if isinstance(val, str):
+        if "-₩" in val or (val.startswith("-") and "%" in val):
+            return "color: #FF4B4B"
+    return ""
+
+
 
 st.title("💼 통합 포트폴리오 대시보드")
 
 col1, col2, col3 = st.columns([5, 1, 0.5])
 with col2:
     if st.button("🔄", help="데이터 새로고침"):
-        st.cache_data.clear()
+        load_data.clear()
         st.rerun()
 
 df, exchange_rates, rates_updated_time, portfolio_last_updated = load_data()
@@ -671,13 +683,7 @@ if not df.empty:
                         total_row
                     ], ignore_index=True)
                     
-                    def highlight_negative(val):
-                        if isinstance(val, str):
-                            if '-₩' in val or (val.startswith('-') and '%' in val):
-                                return 'color: #FF4B4B'
-                        return ''
-                    
-                    styled_df = display_with_total.style.map(highlight_negative, subset=['손익', '수익률(%)'])
+                    styled_df = display_with_total.style.map(highlight_negative_style, subset=['손익', '수익률(%)'])
                     
                     st.dataframe(
                         styled_df,
@@ -739,13 +745,7 @@ if not df.empty:
                 total_row_summary
             ], ignore_index=True)
             
-            def highlight_negative(val):
-                if isinstance(val, str):
-                    if '-₩' in val or (val.startswith('-') and '%' in val):
-                        return 'color: #FF4B4B'
-                return ''
-            
-            styled_summary = display_summary_with_total.style.map(highlight_negative, subset=['손익', '수익률(%)'])
+            styled_summary = display_summary_with_total.style.map(highlight_negative_style, subset=['손익', '수익률(%)'])
             
             st.dataframe(
                 styled_summary,
