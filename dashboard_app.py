@@ -198,6 +198,130 @@ def load_data():
     return df, exchange_rates_to_krw, last_update_time, last_updated
 
 
+def _months_between(start_date, end_date):
+    if end_date < start_date:
+        return 0
+    return (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+
+
+def calculate_copyright_amortization(
+    report_date,
+    copyright_cost=251_420_000,
+    purchase_date=datetime(2021, 4, 1, tzinfo=KST),
+    useful_life_years=10,
+):
+    life_months = useful_life_years * 12
+    monthly_amortization = copyright_cost / life_months
+    elapsed_months = min(life_months, _months_between(purchase_date.date(), report_date))
+    accumulated = monthly_amortization * elapsed_months
+    net_book_value = max(0, copyright_cost - accumulated)
+    return {
+        "copyright_cost": copyright_cost,
+        "monthly_amortization": monthly_amortization,
+        "elapsed_months": elapsed_months,
+        "accumulated_amortization": accumulated,
+        "net_book_value": net_book_value,
+    }
+
+
+def calculate_kosme_loan_schedule(report_date, principal=100_000_000, annual_rate=0.025, amort_months=36, repayment_start_date=None):
+    if repayment_start_date is None:
+        repayment_start_date = datetime(report_date.year, 1, 1).date()
+    monthly_principal = principal / amort_months if amort_months else 0
+    paid_months = min(amort_months, max(0, _months_between(repayment_start_date, report_date)))
+    repaid_principal = monthly_principal * paid_months
+    remaining_principal = max(0, principal - repaid_principal)
+    monthly_interest = remaining_principal * annual_rate / 12
+    return {
+        "monthly_principal": monthly_principal,
+        "paid_months": paid_months,
+        "remaining_principal": remaining_principal,
+        "monthly_interest": monthly_interest,
+    }
+
+
+def calculate_twr(daily_nav_df, cashflow_df):
+    if daily_nav_df.empty:
+        return pd.DataFrame(), 0.0
+
+    nav_df = daily_nav_df.copy()
+    nav_df["date"] = pd.to_datetime(nav_df["date"]).dt.date
+    nav_df = nav_df.sort_values("date").reset_index(drop=True)
+
+    flow_df = cashflow_df.copy()
+    if not flow_df.empty:
+        flow_df["date"] = pd.to_datetime(flow_df["date"]).dt.date
+        flow_by_date = flow_df.groupby("date")["amount_krw"].sum().to_dict()
+    else:
+        flow_by_date = {}
+
+    records = []
+    cumulative = 1.0
+    prev_nav = None
+    for _, row in nav_df.iterrows():
+        nav = float(row["total_nav_krw"])
+        d = row["date"]
+        flow = float(flow_by_date.get(d, 0))
+        if prev_nav is None or prev_nav <= 0:
+            daily_ret = 0.0
+        else:
+            daily_ret = (nav - prev_nav - flow) / prev_nav
+            cumulative *= (1 + daily_ret)
+        records.append({
+            "date": d,
+            "total_nav_krw": nav,
+            "external_flow_krw": flow,
+            "daily_return": daily_ret,
+            "cumulative_return": cumulative - 1,
+        })
+        prev_nav = nav
+
+    result_df = pd.DataFrame(records)
+    return result_df, (cumulative - 1)
+
+
+def get_simple_benchmark_return(index_name, start_date, end_date):
+    symbol_map = {
+        "KOSPI": "^KS11",
+        "NASDAQ": "^IXIC",
+    }
+    symbol = symbol_map.get(index_name)
+    if not symbol:
+        return None
+    try:
+        import urllib.parse
+        encoded = urllib.parse.quote(symbol, safe="")
+        url = f"https://stooq.com/q/d/l/?s={encoded}&i=d"
+        price_df = pd.read_csv(url)
+        price_df["Date"] = pd.to_datetime(price_df["Date"]).dt.date
+        window = price_df[(price_df["Date"] >= start_date) & (price_df["Date"] <= end_date)].sort_values("Date")
+        if len(window) < 2:
+            return None
+        start_close = float(window.iloc[0]["Close"])
+        end_close = float(window.iloc[-1]["Close"])
+        if start_close <= 0:
+            return None
+        return (end_close / start_close) - 1
+    except Exception:
+        return None
+
+
+def load_nav_inputs_from_files():
+    import os
+    nav_path = os.getenv("NAV_DAILY_FILE", "data/nav_daily.csv")
+    flow_path = os.getenv("NAV_FLOW_FILE", "data/nav_cashflows.csv")
+
+    nav_df = pd.DataFrame()
+    flow_df = pd.DataFrame(columns=["date", "amount_krw", "flow_type"])
+
+    if os.path.exists(nav_path):
+        nav_df = pd.read_csv(nav_path)
+    if os.path.exists(flow_path):
+        flow_df = pd.read_csv(flow_path)
+
+    return nav_df, flow_df, nav_path, flow_path
+
+
 
 st.title("💼 통합 포트폴리오 대시보드")
 
@@ -213,7 +337,7 @@ if not df.empty:
     if portfolio_last_updated:
         st.caption(f"📅 포트폴리오 최종 조회: {portfolio_last_updated}")
 
-    tab1, tab2 = st.tabs(["📊 포트폴리오 현황", "📈 성과 분석"])
+    tab1, tab2, tab3 = st.tabs(["📊 포트폴리오 현황", "🏢 법인 재무현황", "📈 통합 NAV/벤치마크"])
     
     with tab1:
         st.sidebar.header("필터 옵션")
@@ -294,7 +418,7 @@ if not df.empty:
                     ),
                     margin=dict(l=10, r=10, t=50, b=80)
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
         with col_chart2:
             stock_df = filtered_df[filtered_df['asset_type']=='stock']
@@ -332,7 +456,7 @@ if not df.empty:
                     ),
                     margin=dict(l=10, r=10, t=50, b=80)
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
         with col_chart3:
             stock_only_df = filtered_df[
@@ -455,7 +579,7 @@ if not df.empty:
                                         st.session_state['selected_market'] = selected_market
                                         st.rerun()
                         else:
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, width='stretch')
                     else:
                         st.info("표시할 데이터가 없습니다.")
                 else:
@@ -531,7 +655,7 @@ if not df.empty:
                             font=dict(size=10, family='Arial')
                         )
                     )
-                    st.plotly_chart(fig_detail, use_container_width=True)
+                    st.plotly_chart(fig_detail, width='stretch')
                 
                 with col2:
                     fig_bar = go.Figure()
@@ -579,7 +703,7 @@ if not df.empty:
                         margin=dict(l=10, r=150, t=50, b=50)
                     )
                     
-                    st.plotly_chart(fig_bar, use_container_width=True)
+                    st.plotly_chart(fig_bar, width='stretch')
                 
                 st.markdown("#### 📋 상세 내역")
                 detail_table = selected_market_stocks.copy()
@@ -599,7 +723,7 @@ if not df.empty:
                 st.dataframe(
                     detail_table[['종목명', '티커', '계좌', '평가금액', '비중(%)', '수익률(%)']],
                     hide_index=True,
-                    use_container_width=True
+                    width='stretch'
                 )
                 
                 if st.button("🔙 전체 보기로 돌아가기"):
@@ -685,7 +809,7 @@ if not df.empty:
                     st.dataframe(
                         styled_df,
                         hide_index=True,
-                        use_container_width=True
+                        width='stretch'
                     )
         
         st.markdown("---")
@@ -753,7 +877,7 @@ if not df.empty:
             st.dataframe(
                 styled_summary,
                 hide_index=True,
-                use_container_width=True
+                width='stretch'
             )
             
             csv = display_summary.to_csv(index=False).encode('utf-8-sig')
@@ -789,50 +913,238 @@ if not df.empty:
                     st.dataframe(
                         detail_display[['통화', '보유액', '원화환산']],
                         hide_index=True,
-                        use_container_width=True
+                        width='stretch'
                     )
 
     with tab2:
-        st.subheader("📈 투자 성과 분석")
-        st.info("🚧 준비 중입니다. 곧 벤치마크 대비 수익률 분석 기능이 추가됩니다.")
-        
-        st.markdown("""
-        ### 📋 구현 예정 기능
-        
-        1. **수익률 비교**
-           - 내 포트폴리오 vs KOSPI
-           - 내 포트폴리오 vs NASDAQ
-           - 내 포트폴리오 vs S&P 500
-        
-        2. **기간별 성과**
-           - 1개월, 3개월, 6개월, 1년, 전체
-           - 월별/분기별 수익률 추이
-        
-        3. **리스크 지표**
-           - 변동성 (표준편차)
-           - 샤프 비율
-           - 최대 낙폭 (MDD)
-        
-        4. **거래 내역 분석**
-           - 입출금 내역 제외
-           - 순수 투자 수익률 계산
-           - 매매 손익 분석
-        """)
-        
-        st.markdown("---")
-        st.subheader("현재 포트폴리오 기본 통계")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        total_eval = df['eval_amount_krw'].sum()
-        total_principal = df['principal_krw'].sum()
-        total_return = ((total_eval - total_principal) / total_principal * 100) if total_principal > 0 else 0
-        stock_count = len(df[df['asset_type'] == 'stock'])
-        
-        col1.metric("보유 종목 수", f"{stock_count}개")
-        col2.metric("총 투자 원금", f"₩{total_principal:,.0f}")
-        col3.metric("총 평가 금액", f"₩{total_eval:,.0f}")
-        col4.metric("누적 수익률", f"{total_return:+.2f}%")
+        st.subheader("🏢 뮤사이(법인) 재무현황")
+        st.caption("상단은 약식 재무상태표/손익계산서만 표시하고, 수정은 하단 'Modify' 영역에서만 수행합니다.")
+        from stock import get_kis_collateral_loan_balance, load_creon_web_balance
+
+        report_date = st.date_input("기준일", value=datetime.now(KST).date(), key="corp_report_date")
+        musai_corp_df = df[df["account_label"].str.contains("뮤사이", na=False)].copy()
+        musai_securities_krw = musai_corp_df[musai_corp_df["asset_type"].isin(["stock", "cash"])]["eval_amount_krw"].sum()
+        creon_balance = load_creon_web_balance()
+        musai_securities_krw += float(creon_balance.get("eval_amount_krw", 0.0))
+        amort = calculate_copyright_amortization(report_date=report_date)
+
+        # 기본값(수정은 하단 Modify에서만)
+        defaults = {
+            "related_party_principal": 300_000_000,
+            "related_party_rate": 4.6,
+            "rcps_1_principal": 180_000_000,
+            "rcps_2_principal": 262_800_000,
+            "rcps_rate": 2.0,
+            "kibo_principal": 70_000_000,
+            "kibo_rate": 3.25,
+            "kosme_principal": 100_000_000,
+            "kosme_rate": 2.5,
+            "collateral_loan_rate": 5.5,
+            "sales": 32_376_011,
+            "opex": 72_326_973,
+            "interest_income": 9_635_962,
+            "dividend_income": 11_743_963,
+            "sec_gain": 88_348_971,
+            "sec_loss": 34_899_317,
+            "interest_expense": 20_465_270,
+        }
+        for k, v in defaults.items():
+            st.session_state.setdefault(f"corp_{k}", v)
+        st.session_state.setdefault("corp_kosme_start", datetime(report_date.year, 1, 1).date())
+
+        kis_loan_result = get_kis_collateral_loan_balance(prefix="C")
+        kis_collateral_loan_krw = float(kis_loan_result.get("loan_balance", 0.0))
+        st.session_state.setdefault("corp_kis_collateral_loan", kis_collateral_loan_krw)
+
+        related_party_principal = float(st.session_state["corp_related_party_principal"])
+        related_party_rate = float(st.session_state["corp_related_party_rate"])
+        rcps_1_principal = float(st.session_state["corp_rcps_1_principal"])
+        rcps_2_principal = float(st.session_state["corp_rcps_2_principal"])
+        rcps_rate = float(st.session_state["corp_rcps_rate"])
+        kibo_principal = float(st.session_state["corp_kibo_principal"])
+        kibo_rate = float(st.session_state["corp_kibo_rate"])
+        kosme_principal = float(st.session_state["corp_kosme_principal"])
+        kosme_rate = float(st.session_state["corp_kosme_rate"])
+        collateral_loan_rate = float(st.session_state["corp_collateral_loan_rate"])
+        kis_collateral_loan_krw = float(st.session_state["corp_kis_collateral_loan"])
+        sales_amount = float(st.session_state["corp_sales"])
+        opex_amount = float(st.session_state["corp_opex"])
+        interest_income = float(st.session_state["corp_interest_income"])
+        dividend_income = float(st.session_state["corp_dividend_income"])
+        sec_gain = float(st.session_state["corp_sec_gain"])
+        sec_loss = float(st.session_state["corp_sec_loss"])
+        interest_expense = float(st.session_state["corp_interest_expense"])
+
+        kosme = calculate_kosme_loan_schedule(
+            report_date=report_date,
+            principal=kosme_principal,
+            annual_rate=kosme_rate / 100,
+            amort_months=36,
+            repayment_start_date=st.session_state["corp_kosme_start"],
+        )
+
+        total_liabilities = (
+            related_party_principal
+            + kibo_principal
+            + kosme["remaining_principal"]
+            + rcps_1_principal
+            + rcps_2_principal
+            + kis_collateral_loan_krw
+        )
+        weighted_avg_rate = (
+            (related_party_principal * related_party_rate)
+            + (kibo_principal * kibo_rate)
+            + (kosme["remaining_principal"] * kosme_rate)
+            + (rcps_1_principal * rcps_rate)
+            + (rcps_2_principal * rcps_rate)
+            + (kis_collateral_loan_krw * collateral_loan_rate)
+        ) / max(total_liabilities, 1)
+
+        total_assets_est = musai_securities_krw + amort["net_book_value"]
+        equity_est = total_assets_est - total_liabilities
+
+        operating_profit = sales_amount - opex_amount
+        non_operating_income = interest_income + dividend_income + sec_gain
+        non_operating_expense = interest_expense + sec_loss
+        pretax_income = operating_profit + non_operating_income - non_operating_expense
+
+        st.markdown("### 📘 약식 재무상태표")
+        bs_table = pd.DataFrame([
+            {"구분": "자산", "항목": "단기매매증권(주식+예수금)", "금액": musai_securities_krw},
+            {"구분": "자산", "항목": "무형자산(저작권 순액)", "금액": amort["net_book_value"]},
+            {"구분": "자산", "항목": "자산총계", "금액": total_assets_est},
+            {"구분": "부채", "항목": "특수관계인 차입금", "금액": related_party_principal},
+            {"구분": "부채", "항목": "기보 대출", "금액": kibo_principal},
+            {"구분": "부채", "항목": "중진공 대출(잔액)", "금액": kosme["remaining_principal"]},
+            {"구분": "부채", "항목": "RCPS 조합1", "금액": rcps_1_principal},
+            {"구분": "부채", "항목": "RCPS 조합2", "금액": rcps_2_principal},
+            {"구분": "부채", "항목": "한투 증권담보대출", "금액": kis_collateral_loan_krw},
+            {"구분": "부채", "항목": "부채총계", "금액": total_liabilities},
+            {"구분": "자본", "항목": "자본(자산-부채)", "금액": equity_est},
+        ])
+        st.dataframe(bs_table.style.format({"금액": "₩{:,.0f}"}), hide_index=True, width='stretch')
+
+        st.markdown("### 📗 약식 손익계산서")
+        pl_df = pd.DataFrame([
+            {"항목": "매출액", "금액": sales_amount},
+            {"항목": "판매비와관리비", "금액": opex_amount},
+            {"항목": "영업손익", "금액": operating_profit},
+            {"항목": "이자수익", "금액": interest_income},
+            {"항목": "배당금수익", "금액": dividend_income},
+            {"항목": "단기매매증권처분이익", "금액": sec_gain},
+            {"항목": "이자비용", "금액": -interest_expense},
+            {"항목": "단기매매증권처분손실", "금액": -sec_loss},
+            {"항목": "법인세차감전이익(추정)", "금액": pretax_income},
+        ])
+        st.dataframe(pl_df.style.format({"금액": "₩{:,.0f}"}), hide_index=True, width='stretch')
+
+        st.markdown(f"**부채총계 가중평균 금리:** {weighted_avg_rate:.2f}%")
+        if kis_loan_result.get("success"):
+            st.caption(f"한투 담보대출 API 자동조회 성공: ₩{kis_collateral_loan_krw:,.0f}")
+        else:
+            st.caption("한투 담보대출 API 자동조회 실패. 하단 Modify에서 수동 보정하세요.")
+        if creon_balance.get("success"):
+            st.caption(
+                f"대신(크레온) 웹수집 반영: ₩{creon_balance.get('eval_amount_krw', 0):,.0f} "
+                f"(source: {creon_balance.get('path')}, updated: {creon_balance.get('last_updated')})"
+            )
+        else:
+            st.caption(f"대신(크레온) 웹수집 파일 미반영 (expected: {creon_balance.get('path')})")
+
+        with st.expander("⚙️ Modify (수정 입력)", expanded=False):
+            c1, c2, c3 = st.columns(3)
+            st.session_state["corp_related_party_principal"] = c1.number_input("특수관계인 차입금", min_value=0, value=int(related_party_principal), step=10_000_000)
+            st.session_state["corp_related_party_rate"] = c2.number_input("특수관계인 금리(%)", min_value=0.0, value=float(related_party_rate), step=0.1)
+            st.session_state["corp_rcps_rate"] = c3.number_input("RCPS 금리(%)", min_value=0.0, value=float(rcps_rate), step=0.1)
+
+            c4, c5, c6 = st.columns(3)
+            st.session_state["corp_rcps_1_principal"] = c4.number_input("RCPS 조합1", min_value=0, value=int(rcps_1_principal), step=10_000_000)
+            st.session_state["corp_rcps_2_principal"] = c5.number_input("RCPS 조합2", min_value=0, value=int(rcps_2_principal), step=10_000_000)
+            st.session_state["corp_kis_collateral_loan"] = c6.number_input("한투 증권담보대출", min_value=0, value=int(kis_collateral_loan_krw), step=10_000_000)
+
+            c7, c8, c9 = st.columns(3)
+            st.session_state["corp_kibo_principal"] = c7.number_input("기보 원금", min_value=0, value=int(kibo_principal), step=5_000_000)
+            st.session_state["corp_kibo_rate"] = c8.number_input("기보 금리(%)", min_value=0.0, value=float(kibo_rate), step=0.05)
+            st.session_state["corp_collateral_loan_rate"] = c9.number_input("증권담보대출 금리(%)", min_value=0.0, value=float(collateral_loan_rate), step=0.1)
+
+            c10, c11, c12 = st.columns(3)
+            st.session_state["corp_kosme_principal"] = c10.number_input("중진공 최초 원금", min_value=0, value=int(kosme_principal), step=10_000_000)
+            st.session_state["corp_kosme_rate"] = c11.number_input("중진공 금리(%)", min_value=0.0, value=float(kosme_rate), step=0.1)
+            st.session_state["corp_kosme_start"] = c12.date_input("중진공 상환 시작일", value=st.session_state["corp_kosme_start"], key="modify_kosme_start")
+
+            p1, p2, p3 = st.columns(3)
+            st.session_state["corp_sales"] = p1.number_input("매출액", min_value=0, value=int(sales_amount), step=1_000_000)
+            st.session_state["corp_opex"] = p2.number_input("판관비", min_value=0, value=int(opex_amount), step=1_000_000)
+            st.session_state["corp_interest_income"] = p3.number_input("이자수익", min_value=0, value=int(interest_income), step=100_000)
+
+            p4, p5, p6 = st.columns(3)
+            st.session_state["corp_dividend_income"] = p4.number_input("배당금수익", min_value=0, value=int(dividend_income), step=100_000)
+            st.session_state["corp_sec_gain"] = p5.number_input("증권처분이익", min_value=0, value=int(sec_gain), step=100_000)
+            st.session_state["corp_sec_loss"] = p6.number_input("증권처분손실", min_value=0, value=int(sec_loss), step=100_000)
+            st.session_state["corp_interest_expense"] = st.number_input("이자비용", min_value=0, value=int(interest_expense), step=100_000)
+
+            st.caption("※ 수정값은 세션 기준으로 즉시 반영됩니다.")
+            st.caption("크레온(대신) COM은 서버 직접 자동화 제약이 커서 별도 로컬 수집 에이전트 연동이 필요합니다.")
+
+    with tab3:
+        st.subheader("📈 통합 NAV 및 벤치마크 비교")
+        st.caption("업로드 방식 대신, 스케줄러(CRON)로 누적 저장된 NAV/현금흐름 파일을 읽어 TWR을 계산합니다.")
+
+        nav_df, flow_df, nav_path, flow_path = load_nav_inputs_from_files()
+        st.caption(f"NAV 파일: `{nav_path}` | 현금흐름 파일: `{flow_path}`")
+        st.caption("※ 외화 환전은 외부 입출금이 아닌 내부 이동으로 간주하여 flow 파일에서 제외하세요.")
+
+        if nav_df.empty:
+            st.warning("NAV 스케줄 파일이 없거나 비어 있습니다. 먼저 CRON으로 일별 NAV를 적재해주세요.")
+        else:
+            required_nav_cols = {"date", "total_nav_krw"}
+            if not required_nav_cols.issubset(set(nav_df.columns)):
+                st.error("NAV 파일에는 최소 date,total_nav_krw 컬럼이 필요합니다.")
+            else:
+                if not flow_df.empty and {"date", "amount_krw", "flow_type"}.issubset(set(flow_df.columns)):
+                    flow_df["amount_krw"] = pd.to_numeric(flow_df["amount_krw"], errors="coerce").fillna(0)
+                    flow_df["flow_type"] = flow_df["flow_type"].astype(str).str.lower().str.strip()
+                    flow_df["amount_krw"] = flow_df.apply(
+                        lambda r: abs(r["amount_krw"]) if r["flow_type"] == "deposit" else -abs(r["amount_krw"]),
+                        axis=1,
+                    )
+                    flow_input = flow_df[["date", "amount_krw"]]
+                else:
+                    flow_input = pd.DataFrame(columns=["date", "amount_krw"])
+
+                twr_series_df, twr_total = calculate_twr(nav_df[["date", "total_nav_krw"]], flow_input)
+                if twr_series_df.empty:
+                    st.warning("계산 가능한 NAV 데이터가 없습니다.")
+                else:
+                    start_date = twr_series_df["date"].min()
+                    end_date = twr_series_df["date"].max()
+                    col_n1, col_n2, col_n3 = st.columns(3)
+                    col_n1.metric("기간", f"{start_date} ~ {end_date}")
+                    col_n2.metric("최종 NAV", f"₩{twr_series_df.iloc[-1]['total_nav_krw']:,.0f}")
+                    col_n3.metric("TWR 수익률", f"{twr_total:+.2%}")
+
+                    fig_nav = px.line(twr_series_df, x="date", y="cumulative_return", title="누적 NAV 수익률(TWR)")
+                    fig_nav.update_yaxes(tickformat=".2%")
+                    st.plotly_chart(fig_nav, width='stretch')
+
+                    kospi_ret = get_simple_benchmark_return("KOSPI", start_date, end_date)
+                    nasdaq_ret = get_simple_benchmark_return("NASDAQ", start_date, end_date)
+                    if kospi_ret is None:
+                        kospi_ret = st.number_input("KOSPI 기간 수익률(수동입력, %)", value=0.0, step=0.1, key="manual_kospi") / 100
+                    if nasdaq_ret is None:
+                        nasdaq_ret = st.number_input("NASDAQ 기간 수익률(수동입력, %)", value=0.0, step=0.1, key="manual_nasdaq") / 100
+
+                    benchmark_df = pd.DataFrame([
+                        {"비교대상": "통합 NAV(TWR)", "수익률": twr_total},
+                        {"비교대상": "KOSPI", "수익률": kospi_ret},
+                        {"비교대상": "NASDAQ", "수익률": nasdaq_ret},
+                    ])
+                    st.dataframe(benchmark_df.style.format({"수익률": "{:+.2%}"}), hide_index=True, width='stretch')
+
+        st.info(
+            "CRON 예시: 매일 장마감 후 collector가 `data/nav_daily.csv`, `data/nav_cashflows.csv`를 갱신하도록 구성하세요. "
+            "대신 계좌는 웹수집기(Playwright 등)에서 `CREON_WEB_BALANCE_FILE` JSON을 갱신한 뒤 서버 파일/DB로 업로드하는 구조를 권장합니다."
+        )
 
 else:
     st.header("⚠️ 데이터를 로드하는 데 실패했습니다.")
