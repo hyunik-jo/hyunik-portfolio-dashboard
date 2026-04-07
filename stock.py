@@ -112,7 +112,11 @@ class KISApi(BaseAPI):
         }
         
         url = f"{self.BASE_URL}{endpoint}"
-        res = requests.request(method, url, headers=headers, params=params, timeout=20)
+        try:
+            res = requests.request(method, url, headers=headers, params=params, timeout=20)
+        except requests.exceptions.RequestException as e:
+            print(f"[KIS 네트워크 오류] {endpoint}: {e}")
+            return None
         
         if res.status_code == 200:
             data = res.json()
@@ -421,8 +425,11 @@ def collect_all_assets(skip_kiwoom=False):
         label = f"한국투자증권({'개인' if api.account_type == 'P' else '법인'})"
         print(f"[{label}] 데이터 수집 중...")
 
-        all_assets.extend(api.get_domestic_balance())
-        all_assets.extend(api.get_overseas_balance())
+        try:
+            all_assets.extend(api.get_domestic_balance())
+            all_assets.extend(api.get_overseas_balance())
+        except Exception as e:
+            print(f"[오류] {label} 데이터 수집 실패: {e}")
     
     # 키움증권 (법인)
     if skip_kiwoom:
