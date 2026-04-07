@@ -513,6 +513,41 @@ def get_kis_collateral_loan_balance(prefix: str = "C") -> Dict[str, float]:
 
     return {"loan_balance": 0.0, "success": False}
 
+
+def load_creon_web_balance(path: str = None) -> Dict[str, float]:
+    """
+    대신(크레온) 웹 수집 결과(JSON) 로드.
+    수집기는 별도(Playwright/웹 자동화)로 실행하고, 이 함수는 결과 파일만 읽습니다.
+
+    JSON 예시:
+    {
+      "eval_amount_krw": 123456789,
+      "cash_krw": 10000000,
+      "last_updated": "2026-04-07 09:00:00"
+    }
+    """
+    if path is None:
+        path = os.getenv("CREON_WEB_BALANCE_FILE", str(DIR_PATH / "data" / "creon_balance.json"))
+
+    try:
+        p = Path(path)
+        if not p.exists():
+            return {"success": False, "eval_amount_krw": 0.0, "cash_krw": 0.0, "last_updated": None, "path": str(p)}
+
+        with open(p, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        return {
+            "success": True,
+            "eval_amount_krw": safe_float(data.get("eval_amount_krw"), 0.0),
+            "cash_krw": safe_float(data.get("cash_krw"), 0.0),
+            "last_updated": data.get("last_updated"),
+            "path": str(p),
+        }
+    except Exception as e:
+        print(f"[CREON 웹수집 로드 오류] {e}")
+        return {"success": False, "eval_amount_krw": 0.0, "cash_krw": 0.0, "last_updated": None, "path": str(path)}
+
 def main():
     """
     로컬에서 직접 실행할 때만 사용되는 함수 (테스트용).
