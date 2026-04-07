@@ -112,7 +112,11 @@ class KISApi(BaseAPI):
         }
         
         url = f"{self.BASE_URL}{endpoint}"
-        res = requests.request(method, url, headers=headers, params=params, timeout=20)
+        try:
+            res = requests.request(method, url, headers=headers, params=params, timeout=20)
+        except requests.exceptions.RequestException as e:
+            print(f"[KIS 네트워크 오류] {endpoint}: {e}")
+            return None
         
         if res.status_code == 200:
             data = res.json()
@@ -421,8 +425,11 @@ def collect_all_assets(skip_kiwoom=False):
         label = f"한국투자증권({'개인' if api.account_type == 'P' else '법인'})"
         print(f"[{label}] 데이터 수집 중...")
 
-        all_assets.extend(api.get_domestic_balance())
-        all_assets.extend(api.get_overseas_balance())
+        try:
+            all_assets.extend(api.get_domestic_balance())
+            all_assets.extend(api.get_overseas_balance())
+        except Exception as e:
+            print(f"[오류] {label} 데이터 수집 실패: {e}")
     
     # 키움증권 (법인)
     if skip_kiwoom:
@@ -443,6 +450,68 @@ def collect_all_assets(skip_kiwoom=False):
                 print(f"[오류] 키움증권 데이터 수집 실패: {e}")
                 
     return all_assets
+
+
+def get_kis_collateral_loan_balance(prefix: str = "C") -> Dict[str, float]:
+    """
+    한국투자증권 해외주식 담보대출(대출기준잔고) 조회.
+    - API 응답 스키마가 계좌/권한별로 다를 수 있어, 후보 필드를 순차 탐색합니다.
+    - 조회 실패 시 {"loan_balance": 0.0, "success": False} 반환.
+    """
+    config = load_account_config(prefix, "kis")
+    if not config:
+        return {"loan_balance": 0.0, "success": False}
+
+    api = KISApi(config["app_key"], config["app_secret"], config["account_no"], prefix)
+    cano, prdt = split_account(config["account_no"])
+    params = {
+        "CANO": cano,
+        "ACNT_PRDT_CD": prdt,
+        "OVRS_EXCG_CD": "NASD",
+        "NATN_CD": "840",
+        "TR_CRCY_CD": "USD",
+    }
+    tr_id = os.getenv("KIS_LOAN_TR_ID", "TTTS3012R")
+
+    data = api._request(
+        "GET",
+        "/uapi/overseas-stock/v1/trading/inquire-paymt-stdr-balance",
+        tr_id,
+        params,
+    )
+    if not data:
+        return {"loan_balance": 0.0, "success": False}
+
+    candidate_keys = [
+        "loan_amt",
+        "tot_loan_amt",
+        "stdr_loan_amt",
+        "crdt_loan_amt",
+        "mgn_loan_amt",
+        "dnca_tot_amt",
+        "ovrs_loan_amt",
+        "loan_balance",
+    ]
+
+    payloads = [data]
+    if isinstance(data.get("output"), dict):
+        payloads.append(data["output"])
+    if isinstance(data.get("output1"), dict):
+        payloads.append(data["output1"])
+    if isinstance(data.get("output2"), dict):
+        payloads.append(data["output2"])
+    if isinstance(data.get("output1"), list):
+        payloads.extend([x for x in data["output1"] if isinstance(x, dict)])
+    if isinstance(data.get("output2"), list):
+        payloads.extend([x for x in data["output2"] if isinstance(x, dict)])
+
+    for payload in payloads:
+        for key in candidate_keys:
+            if key in payload:
+                value = safe_float(payload.get(key), default=0.0)
+                return {"loan_balance": value, "success": True}
+
+    return {"loan_balance": 0.0, "success": False}
 
 def main():
     """
